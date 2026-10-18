@@ -18,6 +18,7 @@ from factory.stations.diff_inspection import inspect_diff
 from factory.stations.fix import run_fixer
 from factory import llm
 from factory.stations.oracle import oracle
+from factory.stations.production_check import check_production
 from factory.stations.reproduce import repro_test_path, reproduce
 from factory.stations.review import review
 from factory.stations.scope import check_scope
@@ -82,6 +83,17 @@ def run_pipeline(bug: BugReport, fixer: Fixer, reproducer, config: Config | None
             run.repro_test_path, run.repro_test_code = repro_test_path(bug), repro_code
             (artifacts / "repro_test.py").write_text(repro_code)
             verdict.evidence["test_sha256"] = _sha(repro_code)
+            if deploy == "canary":
+                fixed = check_production(ws.head(), run.repro_test_path, repro_code, policy, config,
+                                         run_dir / "production_check")
+                verdict.evidence["production_check"] = fixed or "still broken in production"
+                if fixed:
+                    verdict = Verdict("reproduce", "closed",
+                                      f"Already fixed in production by {fixed['fixed_by'][:10]} "
+                                      f"({fixed['fixed_by_subject']}). The reproducing test fails on the base "
+                                      f"commit but passes on production. Nothing to do.", verdict.evidence)
+                    record(verdict)
+                    return _finish(run, log, run_dir)
         if not record(verdict):
             return _finish(run, log, run_dir)
 

@@ -32,13 +32,13 @@ The factory writes every step of every run as it happens. The UI only needs to r
 
 **`station_started`**: `station`. Light the station up.
 
-**`station_finished`**: `station`, `outcome` (`pass` | `escalate`), `reason` (one human-readable sentence, show it), `evidence` (station-specific detail, see below).
+**`station_finished`**: `station`, `outcome` (`pass` | `escalate` | `closed`), `reason` (one human-readable sentence, show it), `evidence` (station-specific detail, see below). `closed` means there is nothing left to do and no human is needed (today: the bug is already fixed in production); the run stops there.
 
 **`deploy_progress`** (canary deploys only, several per run): `station: "deploy"`, `phase` (`starting_canary` | `canary_step` | `canary_step_finished` | `rolled_back` | `promoted`), plus `canary_pct`, `ok`, `detail`, `canary` and `stable` metrics on `canary_step_finished`.
 
 **`escalated`** (only if the run escalated): `station`, `reason`.
 
-**`run_finished`**: `outcome` (`shipped` | `escalated`).
+**`run_finished`**: `outcome` (`shipped` | `escalated` | `closed`).
 
 ## Stations
 
@@ -52,7 +52,7 @@ The first `escalate` stops the line, except that `oracle` and `diff_inspection` 
 |---|---|
 | `scope` | `rules.matches`: protected areas and the words that triggered them; `classifier`: Nemotron call (`model`, `seconds`, `answer.reason`) or `"disabled"` |
 | `baseline` | `tests.counts` |
-| `reproduce` | `attempts[]`: `runs` (e.g. `["red","green","green"]`), `reason`, `qualified`; `test_code` when found |
+| `reproduce` | `attempts[]`: `runs` (e.g. `["red","green","green"]`), `reason`, `qualified`; `test_code` when found; `production_check` (canary runs): `"still broken in production"` or `{production_head, fixed_by, fixed_by_subject}` |
 | `fix` | `fixer`, `seconds`, `diff` |
 | `oracle` | `repro_test.runs` (expect all `green`), `suite.attempts[0].counts`, `suite.flaky` |
 | `diff_inspection` | `checks[]`: `{check, ok, detail}`, ideal as a checklist; `files`, `lines_changed` |
