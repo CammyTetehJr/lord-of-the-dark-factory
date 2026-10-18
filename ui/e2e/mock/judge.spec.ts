@@ -46,7 +46,7 @@ test('reset requires a full hold, announces progress, excludes other changes, an
   await expect(resetButton(page)).toBeDisabled()
   await expect(rollbackButton(page)).toBeDisabled()
   await expect(rollbackButton(page)).not.toContainText('Rolling back…')
-  await expect(page.getByRole('button', { name: 'Try nasty bugs' })).toBeDisabled()
+  await expect(page.locator('[data-scenario="nasty"]').getByRole('button', { name: 'Run', exact: true })).toBeDisabled()
   await expect(page.getByRole('button', { name: /Run all/ })).toBeDisabled()
   await page.evaluate(() => (globalThis as MockWindow).releaseReset())
   await expect(page.locator('.prod [role="status"]')).toContainText('All seeded bugs are back')
@@ -75,58 +75,73 @@ test('reset failures are errors, controls recover, and a retry can succeed', asy
   await expect(page.locator('.prod [role="status"]')).toContainText('All seeded bugs are back')
 })
 
-test('the guide runs all five scenarios with Live roles and resets already-fixed bugs', async ({ page }) => {
+test('the guide runs its prescribed scenarios without changing the launcher mode', async ({ page }) => {
   const guide = page.getByRole('region', { name: 'Judge guide' })
   await expect(guide.locator('.scenario')).toHaveCount(5)
-  const easy = page.getByRole('button', { name: 'Hold to try: Fix the easy bugs', exact: true })
-  await easy.click()
-  await page.waitForTimeout(1100)
-  await expect(page.locator('.lane')).toHaveCount(0)
-  await hold(page, easy)
-  await expect(page.getByRole('button', { name: 'Live · Nemotron', exact: true })).toHaveAttribute('aria-pressed', 'true')
-  for (const id of ['bug1', 'bug2', 'bug3', 'bug4', 'bug5']) {
-    await finished(lane(page, id))
-    await expect(lane(page, id)).toHaveAttribute('data-outcome', 'shipped')
-    await expect(cell(lane(page, id), 'review')).toHaveAttribute('data-status', 'pass')
-  }
-  // A later judge must see fixes ship too, rather than five "already fixed" outcomes.
-  await hold(page, easy)
-  await expect(page.locator('.lane')).toHaveCount(10)
-  for (const id of ['bug1', 'bug2', 'bug3', 'bug4', 'bug5']) {
-    await finished(lane(page, id))
-    await expect(lane(page, id)).toHaveAttribute('data-outcome', 'shipped')
-  }
-  await page.getByRole('button', { name: 'Try nasty bugs' }).click()
+  const easy = guide.locator('[data-scenario="easy"]')
+  await expect(page.getByRole('button', { name: 'Dev', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await easy.getByRole('button', { name: 'Run', exact: true }).click()
+  await finished(lane(page, 'bug3'))
+  await expect(lane(page, 'bug3')).toHaveAttribute('data-outcome', 'shipped')
+  await expect(cell(lane(page, 'bug3'), 'review')).toHaveAttribute('data-status', 'pass')
+  await expect(lane(page, 'bug3').locator('.chip.you')).toHaveText('you')
+  await expect(easy.locator('.scenario-results')).toContainText('Shipped')
+  await expect(page.getByRole('button', { name: 'Dev', exact: true })).toHaveAttribute('aria-pressed', 'true')
+
+  // The second run resets only because production now contains fix(bug3).
+  await easy.getByRole('button', { name: 'Run', exact: true }).click()
+  await expect(easy.locator('.scenario-note')).toContainText('fix(bug3)')
+  await expect(page.locator('.lane[data-bug="bug3"]')).toHaveCount(2)
+  await finished(lane(page, 'bug3'))
+
+  await easy.getByRole('button', { name: 'or all five' }).click()
+  for (const id of ['bug1', 'bug2', 'bug3', 'bug4', 'bug5']) await finished(lane(page, id))
+
+  await guide.locator('[data-scenario="nasty"]').getByRole('button', { name: 'Run', exact: true }).click()
   for (const id of ['bug6', 'bug7']) {
     await finished(lane(page, id))
     await expect(cell(lane(page, id), 'scope')).toHaveAttribute('data-status', 'escalate')
   }
-  await hold(page, page.getByRole('button', { name: 'Hold to try: Plug in a bad robot arm', exact: true }))
+
+  // Scenario 3 has no automatic reset by design; isolate it from the earlier shipping demo.
+  await hold(page, resetButton(page))
+  await guide.locator('[data-scenario="rogue"]').getByRole('button', { name: 'Run', exact: true }).click()
   await finished(lane(page, 'bug1', 'rogue:delete_test'))
   await expect(cell(lane(page, 'bug1', 'rogue:delete_test'), 'oracle')).toHaveAttribute('data-status', 'pass')
   await expect(cell(lane(page, 'bug1', 'rogue:delete_test'), 'diff_inspection')).toHaveAttribute('data-status', 'escalate')
   await finished(lane(page, 'bug3', 'rogue:game_test'))
   await expect(cell(lane(page, 'bug3', 'rogue:game_test'), 'review')).toHaveAttribute('data-status', 'escalate')
-  await hold(page, page.getByRole('button', { name: 'Hold to try: Ship something slow', exact: true }))
+
+  await guide.locator('[data-scenario="slow"]').getByRole('button', { name: 'Run', exact: true }).click()
   const prodBefore = await page.locator('.prod .pill').innerText()
   await finished(lane(page, 'bug1', 'rogue:slow_fix'))
   await expect(cell(lane(page, 'bug1', 'rogue:slow_fix'), 'deploy')).toHaveAttribute('data-status', 'escalate')
   await expect(page.locator('.prod .pill')).toHaveText(prodBefore)
-  await page.getByRole('button', { name: 'Show me how' }).click()
-  await expect(guide.locator('.human-guide')).toContainText('Replay this run')
-  await expect(guide.locator('.human-guide')).toContainText('Resume line')
-  await page.getByRole('button', { name: /Hide guide/ }).click()
+
+  await guide.getByRole('button', { name: 'Audit pill' }).click()
+  await expect(page.locator('.audit-pill')).toHaveClass(/guide-pulse/)
+  await guide.getByRole('button', { name: 'Replay' }).click()
+  await expect(page.locator('.drawer .replay-control')).toHaveClass(/guide-pulse/)
+  await page.getByRole('button', { name: 'Close · Esc' }).click()
+  await guide.getByRole('button', { name: 'Hide' }).click()
+  await expect(page.getByRole('button', { name: 'Try it' })).toBeVisible()
   await page.reload()
-  await expect(page.getByRole('button', { name: /Show guide/ })).toHaveAttribute('aria-expanded', 'false')
+  await expect(guide).toHaveCount(0)
+  await page.getByRole('button', { name: 'Try it' }).click()
+  await expect(page.getByRole('region', { name: 'Judge guide' })).toBeVisible()
 })
 
 test('a refused reset never launches the slow scenario', async ({ page }) => {
+  await setMode(page, 'Dev')
+  await runOne(page, { bug: 'bug1', deploy: 'canary' })
+  await finished(lane(page, 'bug1'))
+  await page.getByRole('button', { name: 'Clear board' }).click()
   await page.evaluate(() => {
     const w = globalThis as MockWindow
     w.__factoryMock.prodReset = async () => ({ ok: false, message: 'Reset refused' })
   })
-  await hold(page, page.getByRole('button', { name: 'Hold to try: Ship something slow', exact: true }))
-  await expect(page.locator('.guide-status[role="alert"]')).toContainText('No scenario runs were started')
+  await page.locator('[data-scenario="slow"]').getByRole('button', { name: 'Run', exact: true }).click()
+  await expect(page.locator('[data-scenario="slow"] .scenario-error')).toContainText('No scenario runs were started')
   await expect(page.locator('.lane')).toHaveCount(0)
   await expect(resetButton(page)).toBeEnabled()
 })

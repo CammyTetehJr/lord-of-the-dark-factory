@@ -49,10 +49,11 @@ function Outcome({ run, onOpen }: { run: RunState; onOpen: () => void }) {
   )
 }
 
-export function Board({ runs, stations, selected, onSelect, onOpen, now }: {
+export function Board({ runs, stations, selected, myRuns = [], onSelect, onOpen, now }: {
   runs: RunState[]
   stations: string[]
   selected: Selection | null
+  myRuns?: string[]
   onSelect: (s: Selection) => void
   onOpen: (runId: string) => void
   now: number
@@ -89,6 +90,7 @@ export function Board({ runs, stations, selected, onSelect, onOpen, now }: {
             <button type="button" className="lane-label" onClick={() => onOpen(run.runId)} title={`${run.bug.title}\n${run.runId}`}>
               <span className="chips" style={{ alignItems: 'center' }}>
                 <b>{run.bug.id}</b>
+                {myRuns.includes(run.runId) && <span className="chip you">you</span>}
                 <span className={`chip ${run.fixer.startsWith('rogue') ? 'rogue' : run.fixer === 'nemotron' ? 'model' : ''}`}>{run.fixer}</span>
               </span>
               <span className="t">{run.bug.title}</span>

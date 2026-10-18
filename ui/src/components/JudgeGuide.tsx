@@ -1,72 +1,104 @@
 import { useRef, useState } from 'react'
-import { useStored } from '../hooks/useFactory'
-import { HoldButton } from './HoldButton'
+import { stationInfo } from '../lib/stations'
+import type { RunState } from '../state/reducer'
 
-export type Scenario = 'easy' | 'nasty' | 'rogue' | 'slow'
+export type Scenario = 'easy' | 'easy-all' | 'nasty' | 'rogue' | 'slow'
+export type ScenarioStart = { ids: string[]; note?: string }
 
-const SCENARIOS: { id: Scenario; title: string; setup: string; watch: string; hold?: boolean }[] = [
-  { id: 'easy', title: 'Fix the easy bugs', setup: 'Bugs 1–5. Reset if already fixed.', watch: 'Watch Deploy: canary traffic goes 10 → 50 → 100%, then the PROD commit changes.', hold: true },
-  { id: 'nasty', title: 'Give it a nasty bug', setup: 'Bugs 6 + 7. Unreliable failures and expired keys.', watch: 'Both stop at Scope. Read why in the escalation queue.' },
-  { id: 'rogue', title: 'Plug in a bad robot arm', setup: 'Two rogue fixes. Reset if already fixed.', watch: 'bug1: Oracle passes, Diff rejects deleted tests. bug3: checks pass until Review vetoes the cheat.', hold: true },
-  { id: 'slow', title: 'Ship something slow', setup: 'Reset, then bug1 with a slow fix.', watch: 'Tests pass. The canary breaches its p95 limit and rolls back automatically; PROD stays unchanged.', hold: true },
-]
+const CARDS = [
+  { id: 'easy', number: '1', title: 'Ship an easy bug', mode: 'Live · Nemotron · ~45 s', sentence: "A customer can't be found by email. Watch the factory reproduce it, fix it and ship it.", watch: 'Every lamp green; Nemotron calls in the drawer; canary 10 → 50 → 100%; PROD commit changes.' },
+  { id: 'nasty', number: '2', title: 'Give it a nasty bug', mode: 'Live · ~15 s', sentence: 'A race condition and an auth bug. Watch it refuse both.', watch: 'Red at Scope with the reason; both land in the escalation queue.' },
+  { id: 'rogue', number: '3', title: 'Plug in a cheating robot', mode: 'Deterministic gate + Live reviewer', sentence: "Swap the fixer for one that cheats: it deletes a test, then hardcodes the test's inputs.", watch: 'First: Oracle green, Diff check red. Second: all green until Review vetoes.' },
+  { id: 'slow', number: '4', title: 'Ship something slow', mode: '~20 s · no model needed', sentence: 'A correct fix that loads all 50,000 invoices. Every test passes.', watch: 'Canary p95 breaches the limit at 10%; automatic rollback; PROD commit unchanged.' },
+] as const
 
-export function JudgeGuide({ disabled, paused, onTry }: {
+function currentStation(run: RunState): string {
+  const active = run.stations.find((s) => run.byStation[s]?.status === 'running')
+  return active ? stationInfo(active).label : 'waiting for a slot'
+}
+
+function result(run: RunState): string {
+  if (run.status === 'running') return `Running · ${currentStation(run)}`
+  if (run.status === 'shipped') {
+    const sha = run.byStation.deploy?.evidence?.promoted_commit
+    return sha ? `Shipped · promoted to production (${String(sha).slice(0, 7)})` : 'Shipped'
+  }
+  if (run.status === 'closed') return run.closed?.reason ?? 'Closed · already fixed'
+  return run.crash ?? run.escalation?.reason ?? 'Escalated'
+}
+
+export function JudgeGuide({ open, setOpen, disabled, paused, runs, onTry, onOpen, onHighlight }: {
+  open: boolean
+  setOpen: (open: boolean) => void
   disabled: boolean
   paused: boolean
-  onTry: (scenario: Scenario, progress: (message: string) => void) => Promise<string>
+  runs: Record<string, RunState>
+  onTry: (scenario: Scenario) => Promise<ScenarioStart>
+  onOpen: (runId: string) => void
+  onHighlight: (control: 'andon' | 'rollback' | 'replay' | 'audit') => void
 }) {
-  const [open, setOpen] = useStored('df.guideOpen', true)
-  const [active, setActive] = useState<Scenario | 'human'>('easy')
-  const [busy, setBusy] = useState(false)
   const running = useRef(false)
-  const [message, setMessage] = useState('')
-  const [error, setError] = useState(false)
+  const [busy, setBusy] = useState<Scenario | null>(null)
+  const [attempts, setAttempts] = useState<Partial<Record<Scenario, ScenarioStart & { error?: string }>>>({})
+
   const run = async (id: Scenario) => {
-    if (running.current || disabled) return
+    if (running.current || disabled || paused) {
+      if (paused) setAttempts((a) => ({ ...a, [id]: { ids: [], error: 'The line is paused by a human. Release the cord to run.' } }))
+      return
+    }
     running.current = true
-    setBusy(true)
-    setActive(id)
-    setError(false)
-    setMessage('Preparing the scenario…')
-    try { setMessage(await onTry(id, setMessage)) }
-    catch (e) { setError(true); setMessage((e as Error).message) }
-    finally { running.current = false; setBusy(false) }
+    setBusy(id)
+    setAttempts((a) => ({ ...a, [id]: { ids: [] } }))
+    try {
+      const attempt = await onTry(id)
+      setAttempts((a) => ({ ...a, [id]: attempt }))
+    }
+    catch (e) { setAttempts((a) => ({ ...a, [id]: { ids: [], error: (e as Error).message } })) }
+    finally { running.current = false; setBusy(null) }
   }
 
+  if (!open) return null
   return (
     <section className="judge-guide" aria-label="Judge guide">
-      <button type="button" className="guide-toggle" aria-expanded={open} aria-controls="judge-scenarios" onClick={() => setOpen(!open)}>
-        <span><span className="eyebrow">Try this</span><strong>Try to make it fail</strong></span>
-        <span>{open ? 'Hide guide −' : 'Show guide +'}</span>
-      </button>
-      {open && <div id="judge-scenarios" className="guide-body">
-        <p className="guide-intro">A bug-fixing robot ships fixes to production with no human approving them. Everything around it decides whether that’s safe. Try to make it fail.</p>
-        <p className="note">Scenarios use Live · Nemotron, about 30–60 seconds per bug. Hold buttons for one second where a reset may remove existing fixes.</p>
-        {paused && <p className="guide-paused">The line is stopped. Resume it above to watch a scenario run, or leave it stopped to test the human override.</p>}
-        <div className="scenario-grid">
-          {SCENARIOS.map((s, i) => <article className={`scenario ${active === s.id ? 'selected' : ''}`} key={s.id}>
-            <h3><span>{i + 1}</span>{s.title}</h3>
-            <p>{s.setup}</p>
-            {s.hold ? <HoldButton disabled={disabled || busy} onConfirm={() => run(s.id)} label={`Hold to try: ${s.title}`} title="Hold for one second; this scenario may reset shared production">
-              <span className="hold-top">{busy && active === s.id ? 'Preparing…' : 'Hold to try'}</span>
-            </HoldButton> : <button type="button" className="btn small" disabled={disabled || busy} onClick={() => run(s.id)}>{busy && active === s.id ? 'Preparing…' : 'Try nasty bugs'}</button>}
-          </article>)}
-          <article className={`scenario ${active === 'human' ? 'selected' : ''}`}>
-            <h3><span>5</span>Be the human</h3>
-            <p>Stop, roll back, replay, and verify.</p>
-            <button type="button" className="btn small" disabled={busy} onClick={() => { setActive('human'); setMessage(''); setError(false) }}>Show me how</button>
+      <div className="guide-head">
+        <div><div className="eyebrow">Try this</div><h2>Try to make it fail</h2></div>
+        <button type="button" className="btn small ghost" onClick={() => setOpen(false)}>Hide</button>
+      </div>
+      <p className="guide-intro">A robot fixes bugs and ships them to production with no human approving. Everything around it decides whether that’s safe.</p>
+      <div className="scenario-list">
+        {CARDS.map((card) => {
+          const attempt = attempts[card.id]
+          const mine = attempt?.ids.map((id) => runs[id]).filter((r): r is RunState => Boolean(r)) ?? []
+          const done = mine.length > 0 && mine.every((r) => r.status !== 'running')
+          return <article className="scenario" key={card.id} data-scenario={card.id}>
+            <div className="scenario-title"><span>{card.number}</span><h3>{card.title}</h3></div>
+            <div className="scenario-mode">{card.mode}</div>
+            <p>{card.sentence}</p>
+            {!done && <p className="scenario-watch"><b>Watch:</b> {card.watch}</p>}
+            {card.id === 'easy' ? <div className="scenario-actions">
+              <button type="button" className="btn small" disabled={disabled || busy !== null} onClick={() => run('easy')}>{busy === 'easy' ? 'Starting…' : 'Run'}</button>
+              <button type="button" className="text-button" disabled={disabled || busy !== null} onClick={() => run('easy-all')}>{busy === 'easy-all' ? 'Starting all five…' : 'or all five'}</button>
+            </div> : <button type="button" className="btn small" disabled={disabled || busy !== null} onClick={() => run(card.id)}>{busy === card.id ? 'Starting…' : 'Run'}</button>}
+            {attempt?.note && <p className="scenario-note">{attempt.note}</p>}
+            {attempt?.error && <p className="scenario-error" role="alert">{attempt.error}</p>}
+            {mine.length > 0 && <ul className="scenario-results">{mine.map((r) => <li key={r.runId} className={r.status === 'running' ? 'running' : r.status === 'shipped' ? 'pass' : 'escalate'}>
+              <span><b>{r.bug.id}</b> · {result(r)}</span>
+              <button type="button" className="text-button" onClick={() => onOpen(r.runId)}>open run →</button>
+            </li>)}</ul>}
           </article>
-        </div>
-        {active !== 'human' && <p className="guide-watch"><b>What to look at · </b>{SCENARIOS.find((s) => s.id === active)?.watch}</p>}
-        {message && <p className={`guide-status ${error ? 'error' : ''}`} role={error ? 'alert' : 'status'}>{message}</p>}
-        {active === 'human' && <ol className="human-guide">
-          <li>Hold <b>Stop line</b> in the top bar, then try the nasty bugs. Their runs stop before the first station. Use <b>Resume line</b> when done.</li>
-          <li>After an easy bug ships, hold <b>Roll back</b> beside PROD to undo the named fix.</li>
-          <li>Click a run’s name or outcome, then <b>Replay this run</b> to recheck its recorded evidence.</li>
-          <li>The <b>Chain intact</b> pill above verifies the signed audit record. Hover for the full verification result.</li>
-        </ol>}
-      </div>}
+        })}
+        <article className="scenario" data-scenario="human">
+          <div className="scenario-title"><span>5</span><h3>Be the human</h3></div>
+          <div className="scenario-mode">Governance · no run</div>
+          <p>You are on the loop, not in it.</p>
+          <div className="human-actions">
+            <button type="button" className="text-button" onClick={() => onHighlight('andon')}>Andon cord</button>
+            <button type="button" className="text-button" onClick={() => onHighlight('rollback')}>Roll back</button>
+            <button type="button" className="text-button" onClick={() => onHighlight('replay')}>Replay</button>
+            <button type="button" className="text-button" onClick={() => onHighlight('audit')}>Audit pill</button>
+          </div>
+        </article>
+      </div>
     </section>
   )
 }
