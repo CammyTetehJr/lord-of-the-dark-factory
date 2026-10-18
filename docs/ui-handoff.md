@@ -23,7 +23,7 @@ They run the real pipeline in about 2 seconds and cost nothing. Use `"deploy": "
 |---|---|---|
 | GET | `/api/meta` | Station order (draw the line from this), available fixers and reproducers |
 | GET | `/api/bugs` | Bug inbox: `id`, `title`, `body` |
-| POST | `/api/runs` | Start a run: `{"bug_id": "bug1"}` (all roles default to Nemotron) → `{"run_id"}` |
+| POST | `/api/runs` | Start a run: `{"bug_id": "bug1"}` (all roles default to Nemotron) → `{"run_id", "queued_behind"}`. **429** with a readable `detail` when the line is busy or the hourly cap is hit |
 | GET | `/api/runs` | Recent runs: `status` (`running`/`shipped`/`escalated`), per-station outcome, escalation reason |
 | GET | `/api/runs/{id}` | One run: `summary`, all `events`, final `result` with full evidence |
 | GET | `/api/runs/{id}/artifacts/fix.diff` | The diff (plain text) |
@@ -38,6 +38,7 @@ They run the real pipeline in about 2 seconds and cost nothing. Use `"deploy": "
 | GET | `/api/prod` | Production: `up`, `url`, `stable` instance, `mainline` (recent production commits), `history` (promoted, rolled_back, manual_rollback) |
 | POST | `/api/prod/start` | Start production if it is not running |
 | POST | `/api/prod/rollback` | Human kill switch: revert the last promoted fix. Body: `{"by": "name"}` |
+| POST | `/api/prod/reset` | Restart production from the original code (all seeded bugs back). Body: `{"by": "name"}` → `{ok, message, url, commit}` |
 
 Event fields and per-station evidence are documented in [events.md](events.md).
 

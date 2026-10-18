@@ -4,6 +4,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from factory import sandbox
 from factory.config import Config
 
 
@@ -104,8 +105,8 @@ class Workspace:
         cmd = [str(self.config.target_python), "-m", "pytest", "-q", "-p", "no:cacheprovider",
                "-p", "no:warnings", f"--junitxml={report}", *targets]
         try:
-            proc = subprocess.run(cmd, cwd=self.path, capture_output=True, text=True,
-                                  timeout=self.config.test_timeout_s)
+            proc = subprocess.run(sandbox.wrap(cmd), cwd=self.path, capture_output=True, text=True,
+                                  timeout=self.config.test_timeout_s, env=sandbox.clean_env())
             exit_code, out = proc.returncode, proc.stdout + proc.stderr
         except subprocess.TimeoutExpired as e:
             return TestResult(exit_code=-1, output_tail=f"timeout after {e.timeout}s")

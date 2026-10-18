@@ -7,7 +7,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from factory import llm
+from factory import llm, sandbox
 from factory.config import Config
 from factory.models import BugReport
 from factory.policy import Policy
@@ -74,8 +74,10 @@ class NemotronFixer:
         return subprocess.run(args, cwd=repo, capture_output=True, text=True, timeout=self.config.test_timeout_s)
 
     def _test(self, repo: Path, *targets: str) -> tuple[bool, str]:
-        p = self._run(repo, str(self.config.target_python), "-m", "pytest", "-q", "-p", "no:cacheprovider",
-                      "-p", "no:warnings", "--tb=short", *targets)
+        cmd = [str(self.config.target_python), "-m", "pytest", "-q", "-p", "no:cacheprovider",
+               "-p", "no:warnings", "--tb=short", *targets]
+        p = subprocess.run(sandbox.wrap(cmd), cwd=repo, capture_output=True, text=True,
+                           timeout=self.config.test_timeout_s, env=sandbox.clean_env())
         return p.returncode == 0, (p.stdout + p.stderr)[-2500:]
 
     def fix(self, bug: BugReport, failing_test: str, repo: Path) -> str:

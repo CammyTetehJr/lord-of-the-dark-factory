@@ -57,6 +57,19 @@ Rogue modes: `delete_test`, `touch_auth`, `add_dependency`, `leak_secret`, `phon
 
 `deploy/` (git-ignored) holds a local production: `mainline` is a git repo of what production runs (one commit per promoted fix), and each running instance is the target service under uvicorn with its own SQLite database seeded with 50,000 invoices. A traffic generator sends a realistic request mix at a steady 200 requests/s over keep-alive connections and splits it between stable and canary. Real systems would split user traffic at a load balancer; the gate logic is the same.
 
+## Public mode (judges)
+
+```bash
+scripts/serve-public.sh        # builds the UI, starts production, serves UI + API on one origin,
+                               # opens an ngrok tunnel, keeps the laptop awake, prints the judge link
+```
+
+- **Access code.** With `FACTORY_ACCESS_CODE` set, every request needs it: once as `?code=...` (sets a cookie, then redirects to a clean URL), via the cookie afterwards. Anything else gets 401.
+- **Containment.** Nemotron's tests and fixes, and the production service, run with a clean environment (no API keys) and, on macOS, inside `sandbox-exec`: no outbound network except localhost, no read access to `.env`, the signing key or the operator's credentials. This is the challenge's "runtime sandbox" future improvement, in its minimal form.
+- **Limits.** At most 2 runs at once, 10 waiting, 80 per hour (`FACTORY_MAX_ACTIVE_RUNS`, `FACTORY_MAX_QUEUED_RUNS`, `FACTORY_MAX_RUNS_PER_HOUR`). Beyond that, `POST /api/runs` answers 429 with a plain-language reason.
+- **Reset.** `POST /api/prod/reset` restarts production from the original code, so every judge can see bugs ship.
+- **Cleanup.** Working copies are deleted after each run; evidence, artifacts and the signed log are kept.
+
 ## Layout
 
 | Path | |
@@ -68,7 +81,9 @@ Rogue modes: `delete_test`, `touch_auth`, `add_dependency`, `leak_secret`, `phon
 | `factory/events.py` | Hash-chained event log and verifier |
 | `eval/` | Answer key: bug reports, hidden tests, reference fixes. The factory never reads it during a run (except the `reference` dev fixer). |
 | `factory/fixers/nemotron.py` | The real fixer: Nemotron search/replace edits with test feedback, up to 3 attempts |
-| `factory/server.py` | HTTP API and live event stream for the UI |
+| `factory/server.py` | HTTP API and live event stream for the UI; access code, run queue, serves `ui/dist` |
+| `factory/sandbox.py` | Clean environment and macOS sandbox for every process running untrusted code |
+| `scripts/serve-public.sh` | One command to put the Control Room online for judges |
 | `docs/ui-handoff.md` | **Start here if you are building the UI** |
 | `docs/events.md` | Event schema for the UI |
 
