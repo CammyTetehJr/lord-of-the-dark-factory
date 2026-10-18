@@ -126,7 +126,7 @@ export default function App() {
               <h1 className="h-display">The line</h1>
               <span className="sub">{lanes.length ? `${lanes.length} run${lanes.length > 1 ? 's' : ''} · ${lanes.filter((r) => r.status === 'shipped').length} shipped · ${lanes.filter((r) => r.status === 'escalated').length} escalated` : 'No runs on the board'}</span>
               <span className="spacer" />
-              <Launcher mode={mode} setMode={setMode} meta={f.meta} bugs={f.bugs} onRun={onRun} />
+              <Launcher mode={mode} setMode={setMode} meta={f.meta} bugs={f.bugs} prod={f.prod} onRun={onRun} />
             </div>
             <div className="board-tools">
               {picked && <button type="button" className="btn small ghost" onClick={() => setPicked(null)}>Follow live</button>}

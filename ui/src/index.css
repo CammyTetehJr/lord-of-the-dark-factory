@@ -262,17 +262,17 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 .stages li.ok { color: var(--pass); } .stages li.ok i { background: var(--pass); border-color: var(--pass); }
 .stages li.breach { color: var(--halt); } .stages li.breach i { background: var(--halt); border-color: var(--halt); }
 .csteps { display: grid; gap: 8px; }
-.cstep { display: grid; grid-template-columns: 56px minmax(0, 1fr) minmax(160px, 1.1fr) 120px; align-items: center; gap: 14px; padding: 10px 12px; border: 1px solid var(--rule); border-radius: 8px; background: var(--floor); }
+.cstep { display: grid; grid-template-columns: 64px minmax(0, 1.2fr) minmax(160px, 1fr) 140px; align-items: center; gap: 14px; padding: 10px 12px; border: 1px solid var(--rule); border-radius: 8px; background: var(--floor); }
 .cstep.breach { border-color: color-mix(in srgb, var(--halt) 55%, var(--rule)); }
-.cstep-pct { font: 800 24px/1 var(--display); letter-spacing: 0.02em; }
+.cstep-pct { font: 800 32px/1 var(--display); letter-spacing: 0.02em; }
 .cstep-figs { display: flex; flex-wrap: wrap; gap: 6px 16px; }
 .cstep-figs div { display: grid; gap: 2px; }
-.cstep-figs b { font: 600 16px/1.1 var(--body); font-variant-numeric: tabular-nums; }
+.cstep-figs b { font: 600 24px/1.1 var(--body); font-variant-numeric: tabular-nums; }
 .cstep-figs b.bad { color: var(--halt-ink); }
 .meter.lat .track { margin-top: 14px; }
 .meter .limit { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ink); border-radius: 1px; }
 .meter .limit span { position: absolute; bottom: calc(100% + 2px); left: 50%; transform: translateX(-50%); white-space: nowrap; font: 500 10.5px/1 var(--mono); color: var(--muted); }
-.cstep-verdict { font: 600 12px/1.2 var(--mono); text-align: right; }
+.cstep-verdict { font: 700 14px/1.2 var(--mono); text-align: right; letter-spacing: 0.02em; }
 .cstep-verdict.ok { color: var(--pass); } .cstep-verdict.breach { color: var(--halt); } .cstep-verdict.running { color: var(--sodium); }
 @media (max-width: 760px) { .cstep { grid-template-columns: 48px minmax(0, 1fr); } .cstep .meter, .cstep-verdict { grid-column: 1 / -1; text-align: left; } }
 
