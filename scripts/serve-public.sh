@@ -27,7 +27,7 @@ echo "› building UI for same-origin serving"
 echo "› starting production"
 .venv/bin/factory prod start
 
-LOG_DIR="runs/public"; mkdir -p "$LOG_DIR"
+LOG_DIR="logs"; mkdir -p "$LOG_DIR"
 echo "› starting factory serve on :$PORT (laptop kept awake while it runs)"
 caffeinate -dimsu .venv/bin/factory serve --port "$PORT" >"$LOG_DIR/serve.log" 2>&1 &
 SERVE_PID=$!

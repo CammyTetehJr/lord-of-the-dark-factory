@@ -84,6 +84,13 @@ class AccessCode:
 
 app.add_middleware(AccessCode)
 
+
+@app.on_event("startup")
+def _recover_interrupted_runs() -> None:
+    from factory.recovery import recover_interrupted
+    for run_id in recover_interrupted(config):
+        print(f"recovered interrupted run {run_id}: escalated by default", flush=True)
+
 # Run queue: at most MAX_ACTIVE runs at once, a short queue behind them, and an hourly cap.
 MAX_ACTIVE = int(os.environ.get("FACTORY_MAX_ACTIVE_RUNS", "2"))
 MAX_QUEUED = int(os.environ.get("FACTORY_MAX_QUEUED_RUNS", "10"))
@@ -154,7 +161,7 @@ def bugs():
 
 @app.get("/api/runs")
 def runs(limit: int = 50):
-    dirs = sorted((d for d in config.runs_dir.glob("*") if d.is_dir()), reverse=True)[:limit]
+    dirs = sorted((d for d in config.runs_dir.glob("*") if (d / "events.jsonl").exists()), reverse=True)[:limit]
     return [_run_summary(d) for d in dirs]
 
 
