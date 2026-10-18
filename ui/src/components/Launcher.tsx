@@ -4,9 +4,12 @@ import type { Bug, Meta, RunRequest } from '../api/types'
 
 export type Mode = 'dev' | 'live'
 
-/** Dev: the real pipeline with stand-ins, about 2 s per bug, free. Live: every role defaults to Nemotron. */
+/**
+ * Dev: the real pipeline with stand-ins and a plain branch deploy, about 2 s per bug, free.
+ * Live: every field left out, so the server defaults to Nemotron in every role and the canary deploy.
+ */
 export function buildRequest(mode: Mode, bug_id: string, fixer?: string): RunRequest {
-  if (mode === 'dev') return { bug_id, fixer: fixer ?? 'reference', reproducer: 'dev', classifier: 'none', reviewer: 'none' }
+  if (mode === 'dev') return { bug_id, fixer: fixer ?? 'reference', reproducer: 'dev', classifier: 'none', reviewer: 'none', deploy: 'branch' }
   return fixer && fixer !== 'nemotron' ? { bug_id, fixer } : { bug_id }
 }
 

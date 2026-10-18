@@ -341,7 +341,7 @@ function createMock(): FactorySource & { tamper(seq?: number): void; restore(): 
       const bug = BUGS.find((b) => b.id === req.bug_id)
       if (!bug) throw new Error(`no bug report ${req.bug_id}`)
       const run_id = `${stamp()}-${bug.id}-${Math.random().toString(16).slice(2, 8)}`
-      void run(bug, { fixer: 'nemotron', reproducer: 'nemotron', classifier: 'nemotron', reviewer: 'nemotron', ...req }, run_id)
+      void run(bug, { fixer: 'nemotron', reproducer: 'nemotron', classifier: 'nemotron', reviewer: 'nemotron', deploy: 'canary', ...req }, run_id)
       return { run_id }
     },
     subscribe(since, onEvent, onStatus) {
