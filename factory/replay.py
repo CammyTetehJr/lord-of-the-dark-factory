@@ -78,7 +78,10 @@ def replay(run_id: str, config: Config | None = None) -> dict:
         if station == "scope":
             rules = check_rules(bug)
             clf = recorded["scope"]["evidence"].get("classifier")
-            note = f"model: {clf['model']} prompt {clf['prompt_sha256'][:12]}" if isinstance(clf, dict) and "model" in clf else ""
+            note = ""
+            if isinstance(clf, dict) and clf.get("model"):
+                prompts = sorted({v["prompt_sha256"][:12] for v in clf.get("votes", []) if "prompt_sha256" in v})
+                note = f"model: {clf['model']}, {clf.get('trivial_votes')}/{len(clf.get('votes', []))} votes, prompt {', '.join(prompts)}"
             # rules are deterministic; if they passed, the recorded outcome also includes the classifier
             if rules.outcome == "escalate" or not isinstance(clf, dict):
                 row("scope", "deterministic", rules.outcome, "keyword rules")

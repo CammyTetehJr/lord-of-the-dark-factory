@@ -19,3 +19,9 @@ class Config:
     inbox_dir: Path = field(default_factory=lambda: Path(
         os.environ.get("FACTORY_INBOX_DIR", ROOT / "eval" / "bugs")))
     test_timeout_s: int = 180
+    # production simulation for the gated deploy
+    deploy_dir: Path = field(default_factory=lambda: Path(
+        os.environ.get("FACTORY_DEPLOY_DIR", ROOT / "deploy")))
+    canary_steps: tuple[int, ...] = (10, 50, 100)
+    canary_step_seconds: float = float(os.environ.get("FACTORY_CANARY_STEP_SECONDS", "4"))
+    prod_invoices: int = int(os.environ.get("FACTORY_PROD_INVOICES", "50000"))

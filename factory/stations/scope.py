@@ -4,6 +4,7 @@ Deterministic rules run first and can only escalate. Then a Nemotron classifier 
 whether the bug is trivial; it too can only escalate, never override a rule.
 """
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 from factory import llm
 from factory.models import BugReport, Verdict
@@ -23,11 +24,13 @@ OUT_OF_SCOPE_AREAS: dict[str, list[str]] = {
 }
 
 MIN_CONFIDENCE = 0.7
+VOTES = 3            # independent classifier samples, run in parallel
+VOTES_NEEDED = 2     # how many must say "trivial" with enough confidence
 
 CLASSIFIER_SYSTEM = """You triage bug reports for an autonomous repair line. Only TRIVIAL bugs may be fixed and shipped without a human.
 
 A bug is TRIVIAL only if ALL of these hold:
-1. Deterministic: one automated test can reproduce it on demand. No dependence on timing, concurrency, load, randomness or environment.
+1. Deterministic: judging from the described behaviour, an automated test COULD reproduce it on demand. No dependence on timing, concurrency, load, randomness or environment. (Reporters are users; they never mention tests. Judge the behaviour itself.)
 2. Localized: the fix is likely a few lines in one or two files.
 3. Clear: the expected behaviour is obvious from the report; no product or business decision is needed.
 4. Safe area: not about authentication, authorization, security, secrets, database schema/migrations, dependencies, infrastructure or configuration.
@@ -54,11 +57,25 @@ def check_rules(bug: BugReport) -> Verdict:
 
 
 def classify(bug: BugReport, repo_tree: str) -> tuple[bool, str, dict]:
-    """Nemotron's opinion. Returns (in_scope, reason, evidence). Any doubt or failure means out of scope."""
+    """Majority of independent Nemotron votes. A single misreading cannot block a bug, and a single
+    optimistic vote cannot pass one. Failed or unreadable votes count as 'not trivial'."""
+    with ThreadPoolExecutor(VOTES) as pool:
+        votes = list(pool.map(lambda _: classify_once(bug, repo_tree), range(VOTES)))
+    yes = [v for v in votes if v[0]]
+    evidence = {"votes": [v[2] for v in votes], "trivial_votes": len(yes), "needed": VOTES_NEEDED,
+                "model": votes[0][2].get("model")}
+    if len(yes) >= VOTES_NEEDED:
+        return True, f"Nemotron classifier: trivial ({len(yes)}/{VOTES} votes). {yes[0][1]}", evidence
+    no = next((v for v in votes if not v[0]), votes[0])
+    return False, f"Nemotron classifier: only {len(yes)}/{VOTES} votes say trivial. {no[1]}", evidence
+
+
+def classify_once(bug: BugReport, repo_tree: str) -> tuple[bool, str, dict]:
+    """One Nemotron opinion. Returns (in_scope, reason, evidence). Any doubt or failure means out of scope."""
     messages = [{"role": "system", "content": CLASSIFIER_SYSTEM},
                 {"role": "user", "content": f"# Bug report\n## {bug.title}\n{bug.body}\n\n# Repository files\n{repo_tree}"}]
     try:
-        res = llm.chat("fast", messages, max_tokens=4000, temperature=0.0)
+        res = llm.chat("fast", messages, max_tokens=4000, temperature=0.3)
     except Exception as e:
         return False, f"Classifier unavailable ({type(e).__name__}); escalating by default.", {"error": str(e)}
     data = llm.extract_json(res.content)
@@ -68,10 +85,10 @@ def classify(bug: BugReport, repo_tree: str) -> tuple[bool, str, dict]:
         return False, "Classifier gave no readable answer; escalating by default.", evidence
     conf = float(data.get("confidence") or 0)
     if not data["trivial"]:
-        return False, f"Nemotron classifier: not trivial ({data.get('category', '?')}). {data.get('reason', '')}", evidence
+        return False, f"Not trivial ({data.get('category', '?')}): {data.get('reason', '')}", evidence
     if conf < MIN_CONFIDENCE:
-        return False, f"Nemotron classifier is not confident enough ({conf:.2f} < {MIN_CONFIDENCE}).", evidence
-    return True, f"Nemotron classifier: trivial ({data.get('category', '?')}, confidence {conf:.2f}).", evidence
+        return False, f"Not confident enough ({conf:.2f} < {MIN_CONFIDENCE}).", evidence
+    return True, f"{data.get('category', '?')}, confidence {conf:.2f}.", evidence
 
 
 def check_scope(bug: BugReport, repo_tree: str = "", classifier: str = "none") -> Verdict:

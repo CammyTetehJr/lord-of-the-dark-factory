@@ -37,7 +37,7 @@ def cmd_run(args) -> None:
     config = Config()
     for bug in _bugs(config, args.bugs):
         _print_run(run_pipeline(bug, get_fixer(args.fixer), get_reproducer(args.reproducer), config,
-                                classifier=args.classifier, reviewer=args.reviewer))
+                                classifier=args.classifier, reviewer=args.reviewer, deploy=args.deploy))
 
 
 def _hidden_test_passes(run, bug_id: str) -> bool | None:
@@ -57,7 +57,7 @@ def cmd_eval(args) -> None:
     """Run every bug, then grade against the answer key. The answer key is read only after the runs."""
     config = Config()
     runs = [run_pipeline(b, get_fixer(args.fixer), get_reproducer(args.reproducer), config,
-                         classifier=args.classifier, reviewer=args.reviewer)
+                         classifier=args.classifier, reviewer=args.reviewer, deploy=args.deploy)
             for b in _bugs(config, args.bugs)]
     key = {b["id"]: b for b in json.loads((ROOT / "eval" / "bugs.json").read_text())["bugs"]}
     print(f"\n{'bug':<6}{'expected':<10}{'actual':<11}{'station':<17}{'hidden test':<13}result")
@@ -104,6 +104,28 @@ def cmd_pubkey(args) -> None:
     print(f"key id: {signing.key_id()}")
 
 
+def cmd_prod(args) -> None:
+    from factory.prod import Prod
+    prod = Prod()
+    if args.action == "status":
+        st = prod.status()
+        print(f"stable: {'UP' if st['up'] else 'DOWN'}  {st['url'] or '-'}")
+        print("production commits:")
+        for c in st["mainline"]:
+            print(f"  {c}")
+        for h in st["history"][-8:]:
+            print(f"  {h['ts']}  {h['event']:<16} {h.get('title') or h.get('reason') or h.get('commit', '')[:10]}")
+    elif args.action == "start":
+        with prod.lock():
+            print(f"stable up at {prod.ensure_stable().url}")
+    elif args.action == "rollback":
+        r = prod.rollback_last("cli")
+        print(("✓ " if r["ok"] else "✗ ") + r["message"])
+    elif args.action == "reset":
+        prod.reset()
+        print("production environment removed")
+
+
 def cmd_setup(args) -> None:
     """Create .target-venv with the target's dependencies (not the target package itself)."""
     config = Config()
@@ -138,7 +160,8 @@ def main() -> None:
         sp.add_argument("--reproducer", default="dev", help="dev | nemotron")
         sp.add_argument("--classifier", default="none", choices=["none", "nemotron"], help="scope classifier")
         sp.add_argument("--reviewer", default="none", choices=["none", "nemotron"], help="veto reviewer")
-        sp.add_argument("--live", action="store_true", help="shorthand: Nemotron for every role")
+        sp.add_argument("--deploy", default="branch", choices=["branch", "canary"], help="gated deploy mode")
+        sp.add_argument("--live", action="store_true", help="shorthand: Nemotron for every role, canary deploy")
         sp.set_defaults(fn=fn)
 
     sp = sub.add_parser("verify", help="verify the event log hash chain and signatures")
@@ -150,6 +173,9 @@ def main() -> None:
     sp.add_argument("run_id")
     sp.set_defaults(fn=cmd_replay)
     sub.add_parser("pubkey", help="print the audit public key").set_defaults(fn=cmd_pubkey)
+    sp = sub.add_parser("prod", help="production environment: status, start, rollback (kill switch), reset")
+    sp.add_argument("action", choices=["status", "start", "rollback", "reset"])
+    sp.set_defaults(fn=cmd_prod)
     sp = sub.add_parser("serve", help="HTTP API for the UI")
     sp.add_argument("--host", default="127.0.0.1")
     sp.add_argument("--port", type=int, default=8100)
@@ -163,6 +189,7 @@ def main() -> None:
     if getattr(args, "live", False):
         args.fixer = args.fixer if args.fixer != "reference" else "nemotron"
         args.reproducer = args.classifier = args.reviewer = "nemotron"
+        args.deploy = "canary"
     args.fn(args)
 
 

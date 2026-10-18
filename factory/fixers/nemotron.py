@@ -21,6 +21,7 @@ Rules:
 - Do not modify, delete or add tests. Do not touch these protected paths: {protected}
 - Do not add dependencies, network calls, subprocess calls or secrets.
 - Keep the change local: a few lines in one or two files.
+- Keep existing function signatures and their meaning unchanged: other code and existing tests rely on them.
 
 Reply with one or more edit blocks in exactly this format and nothing else:
 
@@ -72,9 +73,9 @@ class NemotronFixer:
     def _run(self, repo: Path, *args: str) -> subprocess.CompletedProcess:
         return subprocess.run(args, cwd=repo, capture_output=True, text=True, timeout=self.config.test_timeout_s)
 
-    def _test(self, repo: Path, test_path: str) -> tuple[bool, str]:
-        p = self._run(repo, str(self.config.target_python), "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider",
-                      "-p", "no:warnings", test_path)
+    def _test(self, repo: Path, *targets: str) -> tuple[bool, str]:
+        p = self._run(repo, str(self.config.target_python), "-m", "pytest", "-q", "-p", "no:cacheprovider",
+                      "-p", "no:warnings", "--tb=short", *targets)
         return p.returncode == 0, (p.stdout + p.stderr)[-2500:]
 
     def fix(self, bug: BugReport, failing_test: str, repo: Path) -> str:
@@ -104,12 +105,18 @@ class NemotronFixer:
                            "\nCopy SEARCH text exactly from the current file."
             else:
                 ok, output = self._test(repo, test_path)
-                if ok:
-                    record["result"] = "failing test now passes"
+                suite_ok, suite_output = self._test(repo) if ok else (False, "")
+                if ok and suite_ok:
+                    record["result"] = "failing test passes, full suite green"
                     break
-                record["result"] = "test still failing"
                 self._run(repo, "git", "checkout", "--", ".")
-                feedback = f"After your edits the test still fails:\n```\n{output}\n```\nThe edits were reverted. Try again."
+                if not ok:
+                    record["result"] = "test still failing"
+                    feedback = f"After your edits the test still fails:\n```\n{output}\n```\nThe edits were reverted. Try again."
+                else:
+                    record["result"] = "test passes but existing tests broke"
+                    feedback = (f"Your edits made the failing test pass but broke existing tests:\n```\n{suite_output}\n```\n"
+                                "The edits were reverted. Fix the bug without changing behaviour those tests rely on.")
             messages += [{"role": "assistant", "content": res.content}, {"role": "user", "content": feedback}]
         else:
             return ""  # gave up: the fix station escalates on an empty diff

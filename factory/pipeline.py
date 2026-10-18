@@ -13,7 +13,7 @@ from factory.fixers.base import Fixer
 from factory.models import BugReport, Run, Verdict
 from factory.policy import Policy
 from factory.stations.baseline import check_baseline
-from factory.stations.deploy import deploy
+from factory.stations.deploy import deploy_branch, deploy_canary
 from factory.stations.diff_inspection import inspect_diff
 from factory.stations.fix import run_fixer
 from factory import llm
@@ -39,7 +39,8 @@ class LinePaused(Exception):
 
 
 def run_pipeline(bug: BugReport, fixer: Fixer, reproducer, config: Config | None = None,
-                 run_id: str | None = None, classifier: str = "none", reviewer: str = "none") -> Run:
+                 run_id: str | None = None, classifier: str = "none", reviewer: str = "none",
+                 deploy: str = "branch") -> Run:
     config = config or Config()
     run_id = run_id or new_run_id(bug)
     run_dir = config.runs_dir / run_id
@@ -52,7 +53,7 @@ def run_pipeline(bug: BugReport, fixer: Fixer, reproducer, config: Config | None
     run = Run(id=run_id, bug=bug, fixer=fixer.name, workspace=ws.path)
 
     log.emit("run_started", bug=asdict(bug), fixer=fixer.name, reproducer=reproducer.name,
-             classifier=classifier, reviewer=reviewer,
+             classifier=classifier, reviewer=reviewer, deploy=deploy,
              target={"repo": str(config.target_repo), "ref": config.target_ref, "commit": ws.head()},
              policy=asdict(policy), stations=STATIONS)
 
@@ -107,7 +108,10 @@ def run_pipeline(bug: BugReport, fixer: Fixer, reproducer, config: Config | None
             return _finish(run, log, run_dir)
 
         start("deploy")
-        record(deploy(run, ws))
+        if deploy == "canary":
+            record(deploy_canary(run, config, lambda type, **d: log.emit(type, station="deploy", **d)))
+        else:
+            record(deploy_branch(run, ws))
     except LinePaused as e:
         record(Verdict(str(e), "escalate", "Line paused by a human operator before this station.",
                        {"line": line.state(config.runs_dir)}))

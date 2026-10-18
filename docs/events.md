@@ -34,6 +34,8 @@ The factory writes every step of every run as it happens. The UI only needs to r
 
 **`station_finished`**: `station`, `outcome` (`pass` | `escalate`), `reason` (one human-readable sentence, show it), `evidence` (station-specific detail, see below).
 
+**`deploy_progress`** (canary deploys only, several per run): `station: "deploy"`, `phase` (`starting_canary` | `canary_step` | `canary_step_finished` | `rolled_back` | `promoted`), plus `canary_pct`, `ok`, `detail`, `canary` and `stable` metrics on `canary_step_finished`.
+
 **`escalated`** (only if the run escalated): `station`, `reason`.
 
 **`run_finished`**: `outcome` (`shipped` | `escalated`).
@@ -55,4 +57,4 @@ The first `escalate` stops the line, except that `oracle` and `diff_inspection` 
 | `oracle` | `repro_test.runs` (expect all `green`), `suite.attempts[0].counts`, `suite.flaky` |
 | `diff_inspection` | `checks[]`: `{check, ok, detail}`, ideal as a checklist; `files`, `lines_changed` |
 | `review` | `answer.verdict`, `answer.concerns[]`, `answer.reason`, `model`, `seconds` (or `reviewer: "disabled"`) |
-| `deploy` | `branch`, `commit`, `canary` |
+| `deploy` | `mode` (`canary`/`branch`); canary: `steps[]` (`canary_pct`, `ok`, `detail`, `canary`/`stable` metrics), `stable_reference`, `slo`, `promoted_commit` |

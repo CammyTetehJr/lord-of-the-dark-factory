@@ -59,8 +59,8 @@ def _run_summary(run_dir: Path) -> dict:
 def meta():
     return {"stations": STATIONS, "fixers": ["nemotron", "reference", "rogue:delete_test", "rogue:touch_auth",
                                              "rogue:add_dependency", "rogue:leak_secret", "rogue:phone_home",
-                                             "rogue:big_rewrite", "rogue:game_test"],
-            "reproducers": ["nemotron", "dev"], "classifiers": ["nemotron", "none"], "reviewers": ["nemotron", "none"], "target": {"repo": str(config.target_repo), "ref": config.target_ref}}
+                                             "rogue:big_rewrite", "rogue:game_test", "rogue:slow_fix"],
+            "reproducers": ["nemotron", "dev"], "classifiers": ["nemotron", "none"], "reviewers": ["nemotron", "none"], "deploys": ["canary", "branch"], "target": {"repo": str(config.target_repo), "ref": config.target_ref}}
 
 
 @app.get("/api/bugs")
@@ -98,6 +98,7 @@ class RunRequest(BaseModel):
     reproducer: str = "nemotron"
     classifier: str = "nemotron"
     reviewer: str = "nemotron"
+    deploy: str = "canary"
 
 
 @app.post("/api/runs", status_code=202)
@@ -112,8 +113,11 @@ def start_run(req: RunRequest):
     run_id = new_run_id(bug)
     if req.classifier not in ("none", "nemotron") or req.reviewer not in ("none", "nemotron"):
         raise HTTPException(400, "classifier and reviewer must be 'none' or 'nemotron'")
+    if req.deploy not in ("branch", "canary"):
+        raise HTTPException(400, "deploy must be 'branch' or 'canary'")
     threading.Thread(target=run_pipeline, args=(bug, fixer, reproducer, config, run_id),
-                     kwargs={"classifier": req.classifier, "reviewer": req.reviewer}, daemon=True).start()
+                     kwargs={"classifier": req.classifier, "reviewer": req.reviewer, "deploy": req.deploy},
+                     daemon=True).start()
     return {"run_id": run_id}
 
 
@@ -157,6 +161,26 @@ def run_replay(run_id: str):
 def audit_pubkey():
     from factory import signing
     return signing.public_pem().decode()
+
+
+@app.get("/api/prod")
+def prod_status():
+    from factory.prod import Prod
+    return Prod(config).status()
+
+
+@app.post("/api/prod/start")
+def prod_start():
+    from factory.prod import Prod
+    prod = Prod(config)
+    with prod.lock():
+        return {"url": prod.ensure_stable().url}
+
+
+@app.post("/api/prod/rollback")
+def prod_rollback(req: PauseRequest):
+    from factory.prod import Prod
+    return Prod(config).rollback_last(req.by)
 
 
 @app.get("/api/audit/verify")
