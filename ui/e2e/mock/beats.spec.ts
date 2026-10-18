@@ -1,6 +1,6 @@
 // Every demo beat from docs/ui-handoff.md against the in-browser mock. No backend needed.
 import { expect, test } from '@playwright/test'
-import { auditPill, cell, finished, holdAndon, inspect, inspector, lane, openBoard, runAll, runOne, setMode } from '../helpers.ts'
+import { auditPill, cell, finished, hold, holdAndon, inspect, inspector, lane, openBoard, rollbackButton, runAll, runOne, setMode } from '../helpers.ts'
 
 const MOCK = '?source=mock&speed=5'
 
@@ -99,10 +99,18 @@ test('canary: slow_fix rolls back, the honest fix is promoted, the kill switch r
   await expect(inspector(page).locator('.canary-headline')).toContainText('Promoted to production')
   await expect(inspector(page).locator('.cstep.ok')).toHaveCount(3)
 
-  await page.getByRole('button', { name: 'Roll back last fix' }).click()
-  await expect(page.locator('.popover')).toContainText('Invoice list shows the same invoice on two pages')
-  await page.getByRole('button', { name: 'Roll back now' }).click()
-  await expect(page.locator('.popover')).toContainText('Done: reverted')
+  // the kill switch names what it will revert, a click alone does nothing, a one-second hold reverts it
+  await expect(rollbackButton(page)).toContainText('Invoice list shows the same invoice on two pages')
+  const prodBefore = await page.locator('.prod .pill').innerText()
+  await rollbackButton(page).click()
+  await page.waitForTimeout(1500)
+  await expect(page.locator('.popover.toast')).toHaveCount(0)
+  await expect(page.locator('.prod .pill')).toHaveText(prodBefore)
+  await hold(page, rollbackButton(page))
+  await expect(page.locator('.popover.toast')).toContainText('Rolled back')
+  await expect(page.locator('.prod .pill')).not.toHaveText(prodBefore)
+  await expect(rollbackButton(page)).toBeDisabled()
+  await expect(rollbackButton(page)).toContainText('nothing promoted')
 })
 
 test('replay of a shipped run matches the record', async ({ page }) => {

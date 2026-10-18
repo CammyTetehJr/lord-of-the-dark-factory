@@ -383,3 +383,13 @@ button.pill { background: transparent; cursor: pointer; }
 .locked-card h1 { margin: 0; font: 800 clamp(30px, 4vw, 40px)/1.05 var(--display); text-transform: uppercase; letter-spacing: 0.02em; text-wrap: balance; }
 .locked-card p { margin: 0; font-size: 16px; line-height: 1.5; color: var(--muted); }
 .locked-card code { white-space: nowrap; color: var(--ink); background: var(--floor); padding: 1px 6px; border-radius: 4px; }
+
+/* ---------- hold-to-confirm (roll back) ---------- */
+.hold { --p: 0; position: relative; overflow: hidden; display: inline-grid; justify-items: start; align-content: center; gap: 1px; height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--rule); background: var(--panel); cursor: pointer; text-align: left; touch-action: none; user-select: none; max-width: 230px; }
+.hold::after { content: ''; position: absolute; inset: auto 0 0 0; height: 4px; transform-origin: left; transform: scaleX(var(--p)); background: var(--halt); }
+.hold:disabled { opacity: 0.45; cursor: not-allowed; }
+.hold .hold-top { font: 700 11.5px/1.2 var(--body); letter-spacing: 0.05em; text-transform: uppercase; }
+.hold .hold-sub { font: 500 11px/1.2 var(--mono); color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hold.kill { border-color: color-mix(in srgb, var(--halt) 55%, var(--rule)); color: var(--halt-ink); }
+.hold.kill:hover:not(:disabled) { background: color-mix(in srgb, var(--halt) 10%, var(--panel)); }
+.popover.toast { width: 340px; }

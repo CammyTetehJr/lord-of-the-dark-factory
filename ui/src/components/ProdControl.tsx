@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ProdHistoryEntry, ProdStatus } from '../api/types'
+import { HoldButton } from './HoldButton'
 
 const EVENT_LABEL: Record<string, string> = {
   stable_started: 'stable started',
@@ -18,8 +19,8 @@ export function lastPromoted(prod: ProdStatus | null): ProdHistoryEntry | undefi
 const time = (ts: string) => ts.slice(11, 19)
 
 /**
- * Production status and the human kill switch. One click opens the confirmation, which names
- * exactly which fix will be reverted; production restarts without it.
+ * Production status and the human kill switch. Rolling back changes production, so it is
+ * hold-to-confirm like the andon cord, and the button names the fix it will revert.
  */
 export function ProdControl({ prod, error, operator, onStart, onRollback, onReset }: {
   prod: ProdStatus | null
@@ -31,13 +32,15 @@ export function ProdControl({ prod, error, operator, onStart, onRollback, onRese
 }) {
   const [confirmReset, setConfirmReset] = useState(false)
   const [resetResult, setResetResult] = useState<string | null>(null)
-  const [open, setOpen] = useState<'history' | 'confirm' | null>(null)
+  const [open, setOpen] = useState<'history' | null>(null)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
   const target = lastPromoted(prod)
   const short = prod?.stable?.commit.slice(0, 7)
 
   const rollback = async () => {
+    setOpen(null)
+    setResult(null)
     setBusy(true)
     try {
       setResult(await onRollback(operator || 'operator'))
@@ -47,6 +50,13 @@ export function ProdControl({ prod, error, operator, onStart, onRollback, onRese
       setBusy(false)
     }
   }
+
+  // the result shows for a few seconds, then gets out of the way
+  useEffect(() => {
+    if (!result) return
+    const t = setTimeout(() => setResult(null), 9000)
+    return () => clearTimeout(t)
+  }, [result])
 
   if (!prod) {
     return <span className="pill" title={error ?? 'Checking production'}><i />{error ? 'PROD UNKNOWN' : 'PROD …'}</span>
@@ -66,43 +76,23 @@ export function ProdControl({ prod, error, operator, onStart, onRollback, onRese
           {busy ? 'Starting…' : 'Start production'}
         </button>
       )}
-      <button
-        type="button"
-        className="btn kill"
-        disabled={!prod.up || !target}
-        title={target ? `Revert ${target.commit?.slice(0, 7)} and restart production without it` : 'No promoted fix to roll back'}
-        onClick={() => { setResult(null); setOpen(open === 'confirm' ? null : 'confirm') }}
-        aria-expanded={open === 'confirm'}
+      <HoldButton
+        className="kill"
+        disabled={!prod.up || !target || busy}
+        onConfirm={rollback}
+        title={target ? `Hold for one second to revert ${target.commit?.slice(0, 7)} (${target.title}) and restart production without it` : 'No promoted fix to roll back'}
+        label={target ? `Hold to roll back ${target.title}` : 'Hold to roll back: nothing promoted'}
       >
-        Roll back last fix
-      </button>
+        <span className="hold-top">{busy ? 'Rolling back…' : 'Hold to roll back'}</span>
+        <span className="hold-sub">{target ? target.title : 'nothing promoted'}</span>
+      </HoldButton>
 
       <AnimatePresence>
-        {open === 'confirm' && (
-          <motion.div className="popover" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}>
-            <h4>Kill switch</h4>
-            {result ? (
-              <>
-                <p style={{ color: result.ok ? 'var(--pass-ink)' : 'var(--halt-ink)' }}>{result.ok ? `Done: ${result.message}. Production restarted without it.` : `Not rolled back: ${result.message}`}</p>
-                <div className="row"><button type="button" className="btn" onClick={() => setOpen(null)}>Close</button></div>
-              </>
-            ) : target ? (
-              <>
-                <p>Revert the last fix that reached production and restart stable without it:</p>
-                <div className="ev" style={{ padding: 10 }}>
-                  <b className="mono" style={{ fontSize: 13 }}>{target.commit?.slice(0, 10)}</b>
-                  <div style={{ fontSize: 14, marginTop: 2 }}>{target.title}</div>
-                  <div className="note mono" style={{ fontSize: 11.5 }}>promoted at {time(target.ts)} UTC · {target.run_id}</div>
-                </div>
-                <p>Recorded as rolled back by <b style={{ color: 'var(--ink)' }}>{operator || 'operator'}</b>.</p>
-                <div className="row">
-                  <button type="button" className="btn ghost" onClick={() => setOpen(null)} disabled={busy}>Cancel</button>
-                  <button type="button" className="btn danger" onClick={rollback} disabled={busy}>{busy ? 'Rolling back…' : 'Roll back now'}</button>
-                </div>
-              </>
-            ) : (
-              <p>No promoted fix to roll back.</p>
-            )}
+        {result && (
+          <motion.div className="popover toast" role="status" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}>
+            <p style={{ color: result.ok ? 'var(--pass-ink)' : 'var(--halt-ink)' }}>
+              {result.ok ? `Rolled back: ${result.message}. Production restarted without it.` : `Not rolled back: ${result.message}`}
+            </p>
           </motion.div>
         )}
         {open === 'history' && (

@@ -7,7 +7,7 @@ import { expect, test, type Page } from '@playwright/test'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { auditPill, cell, FACTORY_URL, finished, holdAndon, inspect, inspector, lane, runAll, runOne, setMode } from '../helpers.ts'
+import { auditPill, cell, FACTORY_URL, finished, hold, holdAndon, inspect, inspector, lane, rollbackButton, runAll, runOne, setMode } from '../helpers.ts'
 
 const RUNS_DIR = process.env.E2E_RUNS_DIR ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../runs')
 const BUG1_TITLE = 'Invoice list shows the same invoice on two pages'
@@ -171,8 +171,10 @@ test('canary: slow_fix rolls back in Dev, the honest fix is promoted, the kill s
   await expect(inspector(page).locator('.canary-headline')).toContainText('Promoted to production')
   await expect(page.locator('.prod .pill')).not.toHaveText(before, { timeout: 10_000 })
 
-  await page.getByRole('button', { name: 'Roll back last fix' }).click()
-  await expect(page.locator('.popover')).toContainText(BUG1_TITLE)
-  await page.getByRole('button', { name: 'Roll back now' }).click()
-  await expect(page.locator('.popover')).toContainText('Done: reverted', { timeout: 60_000 })
+  await expect(rollbackButton(page)).toContainText(BUG1_TITLE)
+  await rollbackButton(page).click()
+  await page.waitForTimeout(1500)
+  await expect(page.locator('.popover.toast')).toHaveCount(0)
+  await hold(page, rollbackButton(page))
+  await expect(page.locator('.popover.toast')).toContainText('Rolled back', { timeout: 60_000 })
 })
