@@ -57,7 +57,7 @@ export function Board({ runs, stations, selected, onSelect, onOpen, now }: {
   onOpen: (runId: string) => void
   now: number
 }) {
-  const cols = `minmax(220px, 1.7fr) repeat(${stations.length}, minmax(74px, 1fr)) minmax(120px, 1fr)`
+  const cols = `minmax(170px, 1.5fr) repeat(${stations.length}, minmax(64px, 1fr)) minmax(124px, max-content)`
   return (
     <div className="boardwrap">
       <div className="board" role="grid" aria-label="Runs by station" style={{ gridTemplateColumns: cols }}>
@@ -73,7 +73,7 @@ export function Board({ runs, stations, selected, onSelect, onOpen, now }: {
           const info = stationInfo(s)
           return <div key={s} className={`colh ${info.kind === 'model' ? 'model' : ''}`} title={info.question}>{info.label}</div>
         })}
-        <div className="colh l">Outcome</div>
+        <div className="colh l outcome-h">Outcome</div>
 
         {runs.map((run) => (
           <div

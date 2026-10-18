@@ -49,7 +49,7 @@ export function Launcher({ mode, setMode, meta, bugs, prod, onRun }: {
         <button type="button" aria-pressed={mode === 'dev'} onClick={() => setMode('dev')} title="Reference fixer and dev reproducer, no model calls. About 2 s per bug.">Dev</button>
         <button type="button" aria-pressed={mode === 'live'} onClick={() => setMode('live')} title="Nemotron in every role. About 30 to 60 s per bug.">Live · Nemotron</button>
       </div>
-      <button type="button" className="btn primary" disabled={!bugs.length || busy} onClick={() => run(bugs.map((b) => buildRequest(mode, b.id)))}>
+      <button type="button" className={`btn ${open ? '' : 'primary'}`} disabled={!bugs.length || busy} onClick={() => run(bugs.map((b) => buildRequest(mode, b.id)))}>
         Run all {bugs.length ? `(${bugs.length})` : ''}
       </button>
       <div className="rel">
@@ -58,7 +58,6 @@ export function Launcher({ mode, setMode, meta, bugs, prod, onRun }: {
           {open && (
             <motion.form
               className="popover"
-              style={{ left: 0, right: 'auto' }}
               initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
               onSubmit={async (e) => { e.preventDefault(); await run([buildRequest(mode, bug, chosen, chosenDeploy)]); setOpen(false) }}
             >
@@ -94,7 +93,7 @@ export function Launcher({ mode, setMode, meta, bugs, prod, onRun }: {
                 <p style={{ color: 'var(--sodium)' }}>Only the Nemotron reviewer catches this fix. In Dev mode the reviewer is off and it will ship. Switch to Live.</p>
               )}
               {fixer === 'rogue:game_test' && bug !== 'bug3' && <p>game_test only works on bug3.</p>}
-              <p>{mode === 'dev' ? 'Dev: no model calls, about 2 s.' : 'Live: Nemotron in every role you leave at its default, about 30 to 60 s.'}</p>
+              <p>{mode === 'dev' ? 'Dev: no model calls, about 2\u00a0s.' : 'Live: Nemotron in every role you leave at its default, about 30 to 60\u00a0s.'}</p>
               <div className="row">
                 <button type="button" className="btn ghost" onClick={() => setOpen(false)}>Cancel</button>
                 <button type="submit" className="btn primary" disabled={busy}>Start run</button>
