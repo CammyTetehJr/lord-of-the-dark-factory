@@ -151,6 +151,7 @@ test('header controls and guide fit laptop and desktop widths with a populated a
   await runOne(page, { bug: 'bug1', deploy: 'canary' })
   await finished(lane(page, 'bug1'))
   await expect(page.locator('.audit-pill')).toContainText('Chain intact')
+  await expect(page.locator('.mobile-run-status')).toBeHidden()
   for (const width of [1280, 1440, 1920]) {
     await page.setViewportSize({ width, height: 1000 })
     for (const selector of ['.audit-pill', '.prod', '.prod .kill', '.prod .reset', '.andon', '.judge-guide']) {
@@ -167,4 +168,43 @@ test('header controls and guide fit laptop and desktop widths with a populated a
     expect(reset!.x).toBeGreaterThanOrEqual(rollback!.x + rollback!.width)
     await page.screenshot({ path: `test-results/judge-${width}.png`, fullPage: true })
   }
+})
+
+test('phone layout contains overlays and keeps wide content in its own scroller', async ({ page }) => {
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 })
+    await expect(page.locator('.gbar')).toBeVisible()
+    expect(await page.locator('html').evaluate((element) => element.scrollWidth)).toBe(width)
+  }
+
+  const scenarios = page.locator('.scenario-list')
+  expect(await scenarios.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true)
+  await page.screenshot({ path: 'test-results/mobile-390-home.png', fullPage: true })
+
+  await page.getByRole('button', { name: 'Run one…' }).click()
+  const launcher = page.locator('.popover').filter({ hasText: 'Run one bug' })
+  const popover = await launcher.boundingBox()
+  expect(popover!.x).toBeGreaterThanOrEqual(0)
+  expect(popover!.x + popover!.width).toBeLessThanOrEqual(390)
+  expect(popover!.y + popover!.height).toBeLessThanOrEqual(844)
+  await launcher.getByRole('button', { name: 'Cancel' }).click()
+
+  await setMode(page, 'Dev')
+  await runOne(page, { bug: 'bug1' })
+  await expect(page.locator('.mobile-run-status')).toBeVisible()
+  await finished(lane(page, 'bug1'))
+  await expect(page.locator('.mobile-run-status')).toHaveText('Shipped')
+  await expect(page.locator('.board-swipe')).toBeVisible()
+  expect(await page.locator('html').evaluate((element) => element.scrollWidth)).toBe(390)
+  await page.locator('.boardwrap').evaluate((element) => { element.scrollLeft = element.scrollWidth })
+  await expect(page.locator('.mobile-run-status')).toBeVisible()
+  await lane(page, 'bug1').locator('.outcome').click()
+  const drawer = page.locator('.drawer')
+  await expect(drawer).toBeVisible()
+  await page.waitForTimeout(400)
+  const box = await drawer.boundingBox()
+  expect(box!.x).toBe(0)
+  expect(box!.width).toBe(390)
+  expect(box!.height).toBe(844)
+  await page.screenshot({ path: 'test-results/mobile-390-drawer.png' })
 })

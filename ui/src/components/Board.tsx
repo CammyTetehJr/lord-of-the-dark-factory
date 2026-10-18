@@ -37,6 +37,15 @@ function elapsed(st: StationState, now: number): string {
   return s < 60 ? `${s.toFixed(1)}s` : `${Math.floor(s / 60)}m${String(Math.floor(s % 60)).padStart(2, '0')}`
 }
 
+function mobileRunStatus(run: RunState): string {
+  if (run.crash) return 'Crashed'
+  if (run.escalation) return `${run.escalation.held ? 'Stopped' : 'Escalated'} · ${stationInfo(run.escalation.station).label}`
+  if (run.closed) return 'Closed · already fixed'
+  if (run.status === 'shipped') return 'Shipped'
+  const active = run.stations.find((station) => run.byStation[station]?.status === 'running')
+  return active ? `${stationInfo(active).label} running` : 'Starting…'
+}
+
 function Outcome({ run, onOpen }: { run: RunState; onOpen: () => void }) {
   const esc = run.escalation
   const cls = run.crash ? 'crash' : esc?.held ? 'held' : run.status
@@ -62,6 +71,7 @@ export function Board({ runs, stations, selected, myRuns = [], onSelect, onOpen,
   const cols = `minmax(150px, 1.5fr) repeat(${stations.length}, minmax(50px, 1fr)) max-content`
   return (
     <div className="boardwrap">
+      <div className="board-swipe" aria-hidden="true">Swipe to see every station →</div>
       <div className="board" role="grid" aria-label="Runs by station" style={{ gridTemplateColumns: cols }}>
         <div />
         {groupsOf(stations).map((g, i) => (
@@ -94,6 +104,9 @@ export function Board({ runs, stations, selected, myRuns = [], onSelect, onOpen,
                 <span className={`chip ${run.fixer.startsWith('rogue') ? 'rogue' : run.fixer === 'nemotron' ? 'model' : ''}`}>{run.fixer}</span>
               </span>
               <span className="t">{run.bug.title}</span>
+              <span className="mobile-run-status" data-status={run.crash ? 'crash' : run.escalation?.held ? 'held' : run.status}>
+                {mobileRunStatus(run)}
+              </span>
             </button>
             {stations.map((s, j) => {
               const st = run.byStation[s] ?? { status: 'idle' }
