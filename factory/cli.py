@@ -47,8 +47,9 @@ def _hidden_test_passes(run, bug_id: str) -> bool | None:
     dest = run.workspace / "tests" / hidden[0].name
     shutil.copy(hidden[0], dest)
     config = Config()
-    proc = subprocess.run([str(config.target_python), "-m", "pytest", "-q", "-p", "no:cacheprovider", str(dest)],
-                          cwd=run.workspace, capture_output=True, text=True)
+    from factory import sandbox
+    proc = subprocess.run(sandbox.wrap([str(config.target_python), "-m", "pytest", "-q", "-p", "no:cacheprovider", str(dest)]),
+                          cwd=run.workspace, capture_output=True, text=True, env=sandbox.clean_env())
     dest.unlink()
     return proc.returncode == 0
 

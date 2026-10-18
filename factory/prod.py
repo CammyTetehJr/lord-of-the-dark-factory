@@ -22,6 +22,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from factory import sandbox
 from factory.config import Config
 
 PROD_API_KEY = "factory-prod-traffic"
@@ -147,9 +148,9 @@ class Prod:
         port = _free_port()
         log = open(release / "server.log", "w")
         proc = subprocess.Popen(
-            [str(self.config.target_python), "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1",
-             "--port", str(port), "--log-level", "warning"],
-            cwd=release, env={**os.environ, "INVOICE_DB_PATH": str(db)},
+            sandbox.wrap([str(self.config.target_python), "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1",
+                          "--port", str(port), "--log-level", "warning"]),
+            cwd=release, env=sandbox.clean_env(INVOICE_DB_PATH=str(db)),
             stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
         commit = self.git(release, "rev-parse", "HEAD").stdout.strip()
         inst = Instance(name=name, commit=commit, dir=str(release), port=port, pid=proc.pid)
@@ -268,6 +269,19 @@ class Prod:
             commits = self.git(self.mainline, "log", "--format=%h %s", "-n", "10").stdout.splitlines()
         return {"stable": st, "up": up, "url": f"http://127.0.0.1:{st['port']}" if st else None,
                 "mainline": commits, "history": s["history"][-20:]}
+
+    def reset_production(self, by: str = "operator") -> Instance:
+        """Start production over from the original code (all seeded bugs back), keeping the lock.
+        Waits for any deploy in progress to finish first."""
+        with self.lock():
+            for pid in self.state().get("pids", []):
+                self.stop({"pid": pid})
+            shutil.rmtree(self.mainline, ignore_errors=True)
+            shutil.rmtree(self.releases, ignore_errors=True)
+            self.state_path.unlink(missing_ok=True)
+            inst = self.ensure_stable()
+            self._record(event="reset", by=by, commit=inst.commit, port=inst.port)
+            return inst
 
     def reset(self) -> None:
         """Stop every instance this factory started and delete the production environment."""
