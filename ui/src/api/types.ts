@@ -55,6 +55,7 @@ export interface Meta {
   reproducers: string[]
   classifiers?: string[]
   reviewers?: string[]
+  deploys?: string[]
   target: { repo: string; ref: string }
 }
 
@@ -78,6 +79,8 @@ export interface RunRequest {
   reproducer?: string
   classifier?: string
   reviewer?: string
+  /** 'canary' (server default) or 'branch' */
+  deploy?: string
 }
 
 /** POST /api/runs/{id}/replay (factory/replay.py) */
