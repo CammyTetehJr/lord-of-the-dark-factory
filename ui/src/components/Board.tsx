@@ -71,7 +71,15 @@ export function Board({ runs, stations, selected, onSelect, onOpen, now }: {
         <div className="colh l">Outcome</div>
 
         {runs.map((run) => (
-          <div className="lane" role="row" key={run.runId}>
+          <div
+            className="lane"
+            role="row"
+            key={run.runId}
+            data-run={run.runId}
+            data-bug={run.bug.id}
+            data-fixer={run.fixer}
+            data-outcome={run.crash ? 'crashed' : run.escalation?.held ? 'stopped' : run.status}
+          >
             <button type="button" className="lane-label" onClick={() => onOpen(run.runId)} title={`${run.bug.title}\n${run.runId}`}>
               <span className="chips" style={{ alignItems: 'center' }}>
                 <b>{run.bug.id}</b>
@@ -91,6 +99,7 @@ export function Board({ runs, stations, selected, onSelect, onOpen, now }: {
                   key={s}
                   role="gridcell"
                   className={`cell ${j === 0 ? 'first' : ''} ${info.kind === 'model' ? 'model' : ''}`}
+                  data-station={s}
                   data-status={off ? 'off' : st.status}
                   data-fed={fed}
                   aria-pressed={isSel}

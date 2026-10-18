@@ -5,6 +5,8 @@
 import type { AuditResult, Bug, Evidence, FactoryEvent, LineState, Meta, Metrics, Outcome, ProdStatus, ReplayResult, ReplayRow, RunRequest } from './types'
 import type { FactorySource } from './source'
 
+/** ?speed=10 runs the simulation ten times faster (used by the end-to-end tests). */
+const SPEED = Math.max(1, Number(new URLSearchParams(globalThis.location?.search ?? '').get('speed')) || 1)
 const STATIONS = ['scope', 'baseline', 'reproduce', 'fix', 'oracle', 'diff_inspection', 'review', 'deploy']
 const MODEL = 'nvidia/nemotron-3-super-120b-a12b'
 const FAST = 'nvidia/Nemotron-3_5-Lightning'
@@ -217,7 +219,7 @@ def test_${bugId}_reported_behaviour(client):
 /** The steps a run takes, ending wherever factory/pipeline.py would stop it. */
 function plan(bugId: string, fixer: string, reproducer: string, classifier: string, reviewer: string): Step[] {
   const live = [fixer, reproducer, classifier, reviewer].includes('nemotron')
-  const ms = (fast: number, real: number) => (live ? real : fast) * (0.8 + Math.random() * 0.4)
+  const ms = (fast: number, real: number) => ((live ? real : fast) * (0.8 + Math.random() * 0.4)) / SPEED
   const hits = SCOPE_HITS[bugId]
   if (hits) {
     return [{ station: 'scope', outcome: 'escalate', ms: ms(250, 400),
@@ -323,7 +325,7 @@ function createMock(): FactorySource & { tamper(seq?: number): void; restore(): 
 
   /** Mirrors deploy_canary: 10% → 50% → 100%, SLO check per step, rollback on breach or andon. */
   async function deployCanary(run_id: string, bug: Bug, slow: boolean, fast: boolean) {
-    const stepMs = fast ? 900 : 4000
+    const stepMs = (fast ? 900 : 4000) / SPEED
     const slo = { max_error_rate: 0.01, latency_factor: 2, latency_slack_ms: 10 }
     const stableRef = metrics(400, 7.3)
     const evidence: Evidence = { mode: 'canary', slo, steps: [], stable: { commit: prod.stable?.commit, url: prod.url }, release_suite: { counts: { passed: 22 }, exit_code: 0, failures: [] }, stable_reference: stableRef }
@@ -452,7 +454,7 @@ function createMock(): FactorySource & { tamper(seq?: number): void; restore(): 
     async replay(runId): Promise<ReplayResult> {
       const mine = events.filter((e) => e.run_id === runId)
       if (!mine.length) throw new Error('POST /api/runs/' + runId + '/replay failed (404): run not found')
-      await sleep(1800 + Math.random() * 1200)
+      await sleep((1800 + Math.random() * 1200) / SPEED)
       const fin = mine.filter((e): e is Extract<FactoryEvent, { type: 'station_finished' }> => e.type === 'station_finished')
       const MODEL_STATIONS = ['fix', 'review']
       const rows: ReplayRow[] = fin.map((e) => {
@@ -496,7 +498,7 @@ function createMock(): FactorySource & { tamper(seq?: number): void; restore(): 
       const revert = { sha: hex(40), msg: `Revert "${last.msg}"` }
       prod.commits.push(revert)
       refreshMainline()
-      await sleep(1200)
+      await sleep(1200 / SPEED)
       prod.stable = { name: 'stable', commit: revert.sha, port: (prod.stable?.port ?? 55315) + 1, pid: (prod.stable?.pid ?? 1) + 1 }
       prod.url = `http://127.0.0.1:${prod.stable.port}`
       for (const h of prod.history) if (h.commit === last.sha && h.event === 'promoted') h.reverted = true

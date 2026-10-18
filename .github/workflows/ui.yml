@@ -1,0 +1,35 @@
+name: UI
+
+# Typecheck, unit tests, build, and the end-to-end suite against the in-browser mock.
+# The contract suite (npm run test:e2e) needs a running `factory serve`, so it runs locally.
+on:
+  push:
+    branches: [main]
+    paths: ['ui/**', '.github/workflows/ui.yml']
+  pull_request:
+    paths: ['ui/**', '.github/workflows/ui.yml']
+
+jobs:
+  ui:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e:mock
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: ui/playwright-report
+          retention-days: 7
