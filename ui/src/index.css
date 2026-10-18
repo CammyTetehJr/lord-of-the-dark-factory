@@ -376,3 +376,10 @@ button.pill { background: transparent; cursor: pointer; }
 }
 
 .banner.info { color: var(--ink); background: color-mix(in srgb, var(--sodium) 8%, var(--panel)); border-color: color-mix(in srgb, var(--sodium) 30%, transparent); }
+
+/* ---------- missing or expired access code ---------- */
+.locked { min-height: 100%; display: grid; place-items: center; padding: 32px 20px; }
+.locked-card { max-width: 560px; display: grid; gap: 14px; padding: 32px; border-radius: 14px; border: 1px solid var(--rule); background: var(--panel); }
+.locked-card h1 { margin: 0; font: 800 clamp(30px, 4vw, 40px)/1.05 var(--display); text-transform: uppercase; letter-spacing: 0.02em; text-wrap: balance; }
+.locked-card p { margin: 0; font-size: 16px; line-height: 1.5; color: var(--muted); }
+.locked-card code { white-space: nowrap; color: var(--ink); background: var(--floor); padding: 1px 6px; border-radius: 4px; }

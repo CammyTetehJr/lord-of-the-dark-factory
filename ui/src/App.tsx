@@ -89,6 +89,19 @@ export default function App() {
   }, [launchNote])
 
   const drawerRun = openRun ? f.state.runs[openRun] : null
+
+  // Missing or expired access code: nothing else on the page can work, so say only that.
+  if (source.kind === 'http' && (f.locked || f.errorStatus === 401)) {
+    return (
+      <main className="locked" role="alert">
+        <div className="locked-card">
+          <div className="brand">Dark Factory</div>
+          <h1>This link needs an access code.</h1>
+          <p>Use the full link you were given, including the part that starts with <code>?code=</code>. The code is remembered in this browser for a day.</p>
+        </div>
+      </main>
+    )
+  }
   const line = f.line
 
   return (
@@ -124,12 +137,6 @@ export default function App() {
             <b>Line stopped{line.by ? ` by ${line.by}` : ''}{line.ts ? ` at ${line.ts.slice(11, 19)} UTC` : ''}.</b>
             {line.reason && <span>“{line.reason}”</span>}
             <span>Runs in progress finish their current station, then go to the queue. New runs stop before scope.</span>
-          </div>
-        )}
-        {f.error && source.kind === 'http' && f.errorStatus === 401 && (
-          <div className="banner error" role="alert">
-            <b>This link needs an access code.</b>
-            <span>Open the full link you were given, including <code>?code=…</code>. The code is remembered for a day after that.</span>
           </div>
         )}
         {f.error && source.kind === 'http' && f.errorStatus !== 401 && (

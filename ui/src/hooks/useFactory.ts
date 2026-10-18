@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { mockSource } from '../api/mock'
-import { httpSource, type FactorySource, type StreamStatus } from '../api/source'
+import { httpSource, onUnauthorized, type FactorySource, type StreamStatus } from '../api/source'
 import type { AuditResult, Bug, FactoryEvent, LineState, Meta, ProdStatus } from '../api/types'
 import { apply, emptyState, type FactoryState } from '../state/reducer'
 
@@ -36,6 +36,8 @@ export function useFactory(source: FactorySource) {
   const [errorStatus, setErrorStatus] = useState<number | null>(null)
   const [prod, setProd] = useState<ProdStatus | null>(null)
   const [prodError, setProdError] = useState<string | null>(null)
+  const [locked, setLocked] = useState(false)
+  useEffect(() => onUnauthorized(() => setLocked(true)), [])
   const auditTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const refreshProd = useCallback(() => {
@@ -106,7 +108,7 @@ export function useFactory(source: FactorySource) {
     return m
   }, [events])
 
-  return { state, events, eventsByRun, stream, meta, bugs, line, audit, error, errorStatus, pause, resume, refreshAudit, prod, prodError, prodStart, prodRollback, prodReset }
+  return { state, events, eventsByRun, stream, meta, bugs, line, audit, error, errorStatus, locked, pause, resume, refreshAudit, prod, prodError, prodStart, prodRollback, prodReset }
 }
 
 export function useNow(active: boolean, ms = 200): number {
