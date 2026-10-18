@@ -2,6 +2,8 @@
 
 **The confidence layer that lets a repo fix its own trivial bugs and ship them to production with no human approving the change, and lets people actually trust it.**
 
+**▶ [Watch the 103-second demo video](https://github.com/CammyTetehJr/lord-of-the-dark-factory/releases/download/demo-video/dark-factory-demo.mp4)** (MP4, 6 MB, recorded from the real system; [release page](https://github.com/CammyTetehJr/lord-of-the-dark-factory/releases/tag/demo-video))
+
 Built at the AI Hackathon with Nebius & NVIDIA for the challenge *"a dark factory for bug resolution"*. The bug-fixing agent is the robot arm, and we never trust it. Everything around it decides whether a fix may ship: pre-checks, an oracle, diff inspection, a model that can only veto, a canary deploy that rolls itself back, and a signed audit trail. NVIDIA Nemotron on Nebius Token Factory plays four roles, but **models propose and gates decide**: no model can approve a change.
 
 ```
