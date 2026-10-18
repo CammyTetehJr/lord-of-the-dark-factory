@@ -1,0 +1,65 @@
+"""Pre-check 2: can we get a test that reproduces the bug?
+
+A candidate test qualifies only if, on the unmodified code, it:
+  - collects at least one test,
+  - fails on every rerun, with the same failing tests each time (deterministic),
+  - fails for a plausible reason: no collection/fixture errors, no ImportError/SyntaxError/NameError
+    (those mean the test is broken, not that it found the bug).
+"""
+from typing import Protocol
+
+from factory.models import BugReport, Verdict
+from factory.policy import Policy
+from factory.workspace import TestResult, Workspace
+
+BROKEN_TEST_ERRORS = {"ImportError", "ModuleNotFoundError", "SyntaxError", "IndentationError", "NameError"}
+
+
+class Reproducer(Protocol):
+    name: str
+
+    def candidates(self, bug: BugReport, repo: Workspace) -> list[str]:
+        """Return candidate pytest file contents that should reproduce the bug."""
+
+
+def repro_test_path(bug: BugReport) -> str:
+    return f"tests/test_repro_{bug.id}.py"
+
+
+def _judge(results: list[TestResult]) -> tuple[bool, str]:
+    first = results[0]
+    if not first.cases:
+        return False, "no tests collected (likely an import or syntax error)"
+    for i, r in enumerate(results, 1):
+        errors = [c for c in r.cases if c.status == "error"]
+        if errors:
+            return False, f"run {i}: test errored during setup ({errors[0].error_type or 'unknown'})"
+        broken = [c for c in r.cases if c.status == "failed" and c.error_type in BROKEN_TEST_ERRORS]
+        if broken:
+            return False, f"run {i}: failed for the wrong reason ({broken[0].error_type}); the test itself is broken"
+        if r.passed:
+            return False, f"run {i}: test passed on the buggy code, so it does not reproduce the bug"
+    failing_sets = [frozenset(c.name for c in r.cases if c.status == "failed") for r in results]
+    if len(set(failing_sets)) != 1:
+        return False, "failing tests changed between reruns (non-deterministic)"
+    return True, f"fails deterministically on {len(results)}/{len(results)} runs"
+
+
+def reproduce(bug: BugReport, ws: Workspace, reproducer: Reproducer, policy: Policy) -> tuple[Verdict, str | None]:
+    path = repro_test_path(bug)
+    attempts = []
+    for n, code in enumerate(reproducer.candidates(bug, ws), 1):
+        ws.write_file(path, code)
+        results = [ws.run_tests(path, tag=f"repro-c{n}-r{i}") for i in range(policy.repro_reruns)]
+        (ws.path / path).unlink()
+        ok, why = _judge(results)
+        outcomes = ["red" if not r.passed else "green" for r in results]
+        attempts.append({"candidate": n, "qualified": ok, "reason": why, "runs": outcomes,
+                         "first_run": results[0].summary()})
+        if ok:
+            return Verdict("reproduce", "pass", f"Reproducing test found: {why}.",
+                           {"reproducer": reproducer.name, "test_path": path, "attempts": attempts,
+                            "test_code": code}), code
+    reason = "No candidate test reproduces the bug reliably." if attempts else "Reproducer produced no candidate tests."
+    return Verdict("reproduce", "escalate", reason,
+                   {"reproducer": reproducer.name, "attempts": attempts}), None

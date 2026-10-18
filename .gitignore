@@ -7,3 +7,5 @@ runs/
 worktrees/
 node_modules/
 .DS_Store
+.target-venv/
+*.egg-info/
