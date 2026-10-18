@@ -5,6 +5,10 @@
 #   scripts/serve-public.sh                  # generates an access code
 #   FACTORY_ACCESS_CODE=my-code scripts/serve-public.sh
 #   NGROK_URL=my-name.ngrok-free.app scripts/serve-public.sh   # use your reserved ngrok domain
+#
+# If the domain is held by an ngrok Cloud Endpoint (what ngrok's onboarding creates), connect the
+# agent to the endpoint's internal URL instead and say which public URL to print:
+#   NGROK_URL=https://default.internal PUBLIC_URL=https://my-name.ngrok-free.dev scripts/serve-public.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -39,6 +43,7 @@ trap 'echo; echo "› stopping"; kill $NGROK_PID $SERVE_PID 2>/dev/null; wait 2>
 for _ in $(seq 60); do
   PUBLIC=$(curl -s http://127.0.0.1:4040/api/tunnels 2>/dev/null | python3 -c \
     'import json,sys;t=[x["public_url"] for x in json.load(sys.stdin).get("tunnels",[]) if x["public_url"].startswith("https")];print(t[0] if t else "")' 2>/dev/null || true)
+  if [ -n "$PUBLIC" ] && [ -n "${PUBLIC_URL:-}" ]; then PUBLIC="$PUBLIC_URL"; fi
   [ -n "$PUBLIC" ] && curl -s -o /dev/null "http://127.0.0.1:$PORT/api/line?code=$FACTORY_ACCESS_CODE" && break
   sleep 1
 done
