@@ -88,10 +88,10 @@ test('hold-to-reset uses the HTTP endpoint with judge attribution and refreshes 
 test('a scenario shows the server’s 429 reason instead of claiming it started', async ({ page }) => {
   await factory(page, { refuseRuns: true })
   await page.goto('/')
-  await page.getByRole('button', { name: 'Try nasty bugs' }).click()
-  await expect(page.locator('.guide-status[role="alert"]')).toContainText('The hourly limit is reached. Try again later.')
+  await page.locator('[data-scenario="nasty"]').getByRole('button', { name: 'Run', exact: true }).click()
+  await expect(page.locator('[data-scenario="nasty"] .scenario-error')).toContainText('The hourly limit is reached. Try again later.')
   await expect(page.locator('.lane')).toHaveCount(0)
-  await expect(page.locator('.guide-status')).not.toContainText('accepted')
+  await expect(page.locator('[data-scenario="nasty"]')).not.toContainText('accepted')
 })
 
 test('an expired access code on a production action replaces the board with the full-page message', async ({ page }) => {

@@ -1,12 +1,12 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { API_URL } from './api/source'
+import { API_URL, ApiError } from './api/source'
 import type { RunRequest } from './api/types'
 import { Andon } from './components/Andon'
 import { Board, type Selection } from './components/Board'
 import { Inspector } from './components/Inspector'
-import { buildRequest, Launcher, prodHasFixFor, type Mode } from './components/Launcher'
-import { JudgeGuide, type Scenario } from './components/JudgeGuide'
+import { buildRequest, Launcher, type Mode } from './components/Launcher'
+import { JudgeGuide, type Scenario, type ScenarioStart } from './components/JudgeGuide'
 import { ProdControl } from './components/ProdControl'
 import { EventStream, Queue } from './components/Rail'
 import { RunDrawer } from './components/RunDrawer'
@@ -48,6 +48,8 @@ export default function App() {
   const [mode, setMode] = useStored<Mode>('df.mode', 'dev')
   const [operator, setOperator] = useStored('df.operator', '')
   const [acked, setAcked] = useStored<string[]>('df.acked', [])
+  const [myRuns, setMyRuns] = useStored<string[]>('df.myRuns', [])
+  const [guideOpen, setGuideOpen] = useStored('df.guide.open', true)
   const [clearedAt, setClearedAt] = useState<number | null>(null)
   const cutoff = clearedAt ?? f.visitSeq
   const [picked, setPicked] = useState<Selection | null>(null)
@@ -74,48 +76,68 @@ export default function App() {
     let started = 0
     let waiting = 0
     let error: string | null = null
+    let errorStatus: number | null = null
+    const ids: string[] = []
     try {
       for (const r of reqs) {
         const res = await source.startRun(r)
+        ids.push(res.run_id)
         started++
         if ((res.queued_behind ?? 0) > 0) waiting++
       }
     } catch (e) {
       // 429 carries the server's plain-language reason (line busy, hourly cap)
+      errorStatus = e instanceof ApiError ? e.status : null
       error = started ? `${started} of ${reqs.length} started. ${(e as Error).message}` : (e as Error).message
       setLaunchError(error)
     }
+    if (ids.length) setMyRuns([...new Set([...myRuns, ...ids])])
     // runs beyond the active limit wait their turn; they appear on the board when they start
     if (waiting) setLaunchNote(`${waiting} run${waiting > 1 ? 's are' : ' is'} waiting their turn and will appear on the line when ${waiting > 1 ? 'they start' : 'it starts'}.`)
-    return { started, waiting, error }
-  }, [])
+    return { started, waiting, error, errorStatus, ids }
+  }, [myRuns, setMyRuns])
 
-  const tryScenario = async (scenario: Scenario, progress: (message: string) => void) => {
+  const tryScenario = async (scenario: Scenario): Promise<ScenarioStart> => {
     setScenarioBusy(true)
     try {
-      setMode('live')
-      if (scenario !== 'nasty') {
-        // Read shared production now: another judge may have changed it since the last poll.
-        progress('Checking production…')
+      if (f.line.paused) throw new Error('The line is paused by a human. Release the cord to run.')
+      let note: string | undefined
+      if (scenario === 'easy' || scenario === 'easy-all' || scenario === 'slow') {
         const prod = await source.prod()
-        const needsReset = scenario === 'slow' || (scenario === 'easy'
-          ? prod.mainline.length > 1 || prod.history.some((h) => h.event === 'promoted' && !h.reverted)
-          : ['bug1', 'bug3'].some((id) => prodHasFixFor(prod, f.bugs.find((b) => b.id === id))))
-        if (needsReset) {
-          progress('Resetting production… Usually 5–10 seconds. The runs will start when it is ready.')
+        const bug = scenario === 'slow' ? 'bug1' : 'bug3'
+        if (prod.mainline.some((line) => line.includes(`fix(${bug}):`))) {
           const reset = await f.prodReset(operator || 'judge')
           if (!reset.ok) throw new Error(`Not reset: ${reset.message}. No scenario runs were started.`)
+          note = `Production contained fix(${bug}); reset to the original code before starting.`
         }
       }
-      progress('Starting Live runs…')
-      const reqs = scenario === 'easy' ? ['bug1', 'bug2', 'bug3', 'bug4', 'bug5'].map((id) => buildRequest('live', id))
+      const reqs = scenario === 'easy' ? [buildRequest('live', 'bug3')]
+        : scenario === 'easy-all' ? ['bug1', 'bug2', 'bug3', 'bug4', 'bug5'].map((id) => buildRequest('live', id))
         : scenario === 'nasty' ? ['bug6', 'bug7'].map((id) => buildRequest('live', id))
-        : scenario === 'rogue' ? [buildRequest('live', 'bug1', 'rogue:delete_test'), buildRequest('live', 'bug3', 'rogue:game_test')]
-        : [buildRequest('live', 'bug1', 'rogue:slow_fix')]
+        : scenario === 'rogue' ? [buildRequest('dev', 'bug1', 'rogue:delete_test', 'branch'), buildRequest('live', 'bug3', 'rogue:game_test')]
+        : [buildRequest('dev', 'bug1', 'rogue:slow_fix', 'canary')]
       const res = await onRun(reqs)
-      if (res.error) throw new Error(res.error)
-      return `${res.started} Live run${res.started === 1 ? '' : 's'} accepted.${res.waiting ? ` ${res.waiting} waiting their turn.` : ''} Follow the lanes below.`
+      if (res.error) throw new Error(res.errorStatus === 429 ? res.error : 'The factory is not reachable right now.')
+      return { ids: res.ids, note }
     } finally { setScenarioBusy(false) }
+  }
+
+  const highlight = (control: 'andon' | 'rollback' | 'replay' | 'audit') => {
+    const pulse = (selector: string) => {
+      const element = document.querySelector(selector)
+      if (!element) return
+      element.classList.add('guide-pulse')
+      setTimeout(() => element.classList.remove('guide-pulse'), 2_000)
+    }
+    if (control === 'replay') {
+      const runId = [...myRuns].reverse().find((id) => f.state.runs[id]) ?? [...f.state.order].reverse().find((id) => f.state.runs[id])
+      if (runId) {
+        setOpenRun(runId)
+        setTimeout(() => pulse('.drawer .replay-control'), 100)
+      }
+      return
+    }
+    pulse(control === 'andon' ? '.andon' : control === 'rollback' ? '.prod .kill' : '.audit-pill')
   }
   useEffect(() => {
     if (!launchNote) return
@@ -150,6 +172,7 @@ export default function App() {
           <span className={`pill audit-pill ${f.audit ? (f.audit.ok ? 'ok' : 'bad') : ''}`} title={auditLabel(f.audit).title} role="status">
             <i />{auditLabel(f.audit).text}{auditLabel(f.audit).key && <span className="audit-key"> by {auditLabel(f.audit).key}</span>}
           </span>
+          {!guideOpen && <button type="button" className="btn small guide-open" onClick={() => setGuideOpen(true)}>Try it</button>}
           {f.stream !== 'open' && <span className="pill warn"><i />{f.stream === 'connecting' ? 'connecting…' : 'reconnecting…'}</span>}
         </div>
         <div className="gbar-controls">
@@ -190,7 +213,6 @@ export default function App() {
       <main className="main">
         <div className="left">
           <div>
-            <JudgeGuide disabled={!f.meta || !f.bugs.length || f.visitSeq === null || f.prodAction !== null || scenarioBusy} paused={line.paused} onTry={tryScenario} />
             <div className="board-head">
               <h1 className="h-display">The line</h1>
               <span className="sub">{lanes.length ? `${lanes.length} run${lanes.length > 1 ? 's' : ''} · ${lanes.filter((r) => r.status === 'shipped').length} shipped · ${lanes.filter((r) => r.status === 'escalated').length} escalated${lanes.some((r) => r.status === 'closed') ? ` · ${lanes.filter((r) => r.status === 'closed').length} closed` : ''}` : 'No runs on the board'}</span>
@@ -203,7 +225,7 @@ export default function App() {
               {cutoff !== null && cutoff > 0 && <button type="button" className="btn small ghost" onClick={() => setClearedAt(0)}>Show earlier runs</button>}
             </div>
             {lanes.length ? (
-              <Board runs={lanes} stations={stations} selected={selected} onSelect={setPicked} onOpen={setOpenRun} now={now} />
+              <Board runs={lanes} stations={stations} selected={selected} myRuns={myRuns} onSelect={setPicked} onOpen={setOpenRun} now={now} />
             ) : (
               <div className="empty-board">
                 <b>The line is quiet</b>
@@ -215,6 +237,7 @@ export default function App() {
           <Inspector run={selRun} station={selected?.station ?? null} onOpen={setOpenRun} />
         </div>
         <aside className="rail">
+          <JudgeGuide open={guideOpen} setOpen={setGuideOpen} disabled={!f.meta || !f.bugs.length || f.visitSeq === null || f.prodAction !== null || scenarioBusy} paused={line.paused} runs={f.state.runs} onTry={tryScenario} onOpen={setOpenRun} onHighlight={highlight} />
           <Queue runs={queue} acked={acked} onAck={(id) => setAcked([...acked, id])} onOpen={setOpenRun} />
           <EventStream events={f.events} broken={broken} />
         </aside>
