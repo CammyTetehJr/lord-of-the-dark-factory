@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "vitest run --dir src",
     "dev:mock": "vite --open /?source=mock",
     "test:e2e": "playwright test --project=real --workers=1",
     "test:e2e:mock": "playwright test --project=mock"
