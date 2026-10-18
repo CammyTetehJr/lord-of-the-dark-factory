@@ -2,7 +2,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-Outcome = Literal["pass", "escalate"]
+# "closed": nothing left to do (e.g. already fixed in production); not an escalation.
+Outcome = Literal["pass", "escalate", "closed"]
 
 
 @dataclass
@@ -46,6 +47,8 @@ class Run:
     def outcome(self) -> str:
         if any(v.outcome == "escalate" for v in self.verdicts):
             return "escalated"
+        if any(v.outcome == "closed" for v in self.verdicts):
+            return "closed"
         return "shipped"
 
     @property

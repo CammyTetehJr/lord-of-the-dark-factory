@@ -13,7 +13,7 @@ from factory.models import BugReport
 from factory.pipeline import run_pipeline
 from factory.reproducers import get_reproducer
 
-ICON = {"pass": "✓", "escalate": "✗"}
+ICON = {"pass": "✓", "escalate": "✗", "closed": "○"}
 
 
 def _bugs(config: Config, ids: list[str] | None) -> list[BugReport]:
@@ -64,7 +64,7 @@ def cmd_eval(args) -> None:
     correct = 0
     for run in runs:
         exp = key[run.bug.id]["expected"]
-        actual = "ship" if run.outcome == "shipped" else "escalate"
+        actual = {"shipped": "ship", "escalated": "escalate"}.get(run.outcome, run.outcome)
         station = run.escalation.station if run.escalation else "-"
         hidden = _hidden_test_passes(run, run.bug.id) if actual == "ship" else None
         ok = actual == exp and hidden is not False
