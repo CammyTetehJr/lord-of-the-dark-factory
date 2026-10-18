@@ -2,7 +2,7 @@
 // one run's events. Every component reads FactoryState only, so replay looks exactly like live.
 import type { Bug, Evidence, FactoryEvent, Metrics, Outcome, RunStatus } from '../api/types'
 
-export type StationStatus = 'idle' | 'running' | 'pass' | 'escalate' | 'held' | 'skipped'
+export type StationStatus = 'idle' | 'running' | 'pass' | 'escalate' | 'closed' | 'held' | 'skipped'
 
 export interface StationState {
   status: StationStatus
@@ -36,6 +36,9 @@ export interface RunState {
   bug: Bug
   fixer: string
   reproducer: string
+  /** 'nemotron' or 'none' (older runs predate the field) */
+  classifier?: string
+  reviewer?: string
   stations: string[]
   byStation: Record<string, StationState>
   status: RunStatus
@@ -46,6 +49,8 @@ export interface RunState {
   deploy?: string
   /** live canary progress, from deploy_progress events */
   canary?: CanaryState
+  /** set when a station closed the run (e.g. already fixed in production) */
+  closed?: { station: string; reason: string }
   /** set when the pipeline itself crashed (station "factory") */
   crash?: string
   firstSeq: number
@@ -110,6 +115,8 @@ export function apply(state: FactoryState, e: FactoryEvent): FactoryState {
         reproducer: e.reproducer,
         stations: e.stations,
         deploy: e.deploy,
+        classifier: e.classifier,
+        reviewer: e.reviewer,
         byStation: Object.fromEntries(e.stations.map((s) => [s, { status: 'idle' as StationStatus }])),
         status: 'running',
         startedAt: e.ts,
@@ -126,6 +133,7 @@ export function apply(state: FactoryState, e: FactoryEvent): FactoryState {
         if (e.station === 'factory') return { ...r, crash: e.reason, lastSeq: e.seq }
         const held = e.outcome === 'escalate' && isHeld(e.evidence)
         return {
+          ...(e.outcome === 'closed' ? { closed: { station: e.station, reason: e.reason } } : {}),
           ...patchStation(r, e.station, {
             status: held ? 'held' : e.outcome,
             outcome: e.outcome,

@@ -1,5 +1,9 @@
 import { motion } from 'motion/react'
+import { createContext, useContext } from 'react'
 import type { Evidence, ModelCall } from '../api/types'
+
+/** Inside the run drawer's steps, each agent card already lists its calls; evidence omits them. */
+export const HideCalls = createContext(false)
 import { shortModel } from '../lib/stations'
 import type { StationState } from '../state/reducer'
 
@@ -14,6 +18,7 @@ export function Runs({ runs }: { runs: string[] }) {
 }
 
 export function Call({ call, label }: { call: ModelCall; label?: string }) {
+  if (useContext(HideCalls)) return null
   return (
     <div className="call">
       ◆ {label ? `${label} · ` : ''}{shortModel(call.model)}
@@ -105,8 +110,17 @@ function Scope({ ev }: { ev: Evidence }) {
 function Reproduce({ ev }: { ev: Evidence }) {
   const attempts: Evidence[] = ev.attempts ?? []
   if (!attempts.length) return <div className="note">The reproducer produced no candidate tests.</div>
+  const pc = ev.production_check
   return (
     <div>
+      {pc && (
+        <div className="cand">
+          <div className="eyebrow">Production check</div>
+          {typeof pc === 'string'
+            ? <div className="note">{pc}: the fix is still needed.</div>
+            : <div className="chips" style={{ marginTop: 4 }}><span className="chip">fixed by {String(pc.fixed_by).slice(0, 10)}</span><span className="note">{pc.fixed_by_subject}</span></div>}
+        </div>
+      )}
       {attempts.map((a) => (
         <div className="cand" key={a.candidate}>
           <div className="chips" style={{ alignItems: 'center' }}>

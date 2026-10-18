@@ -1,7 +1,8 @@
 // Shapes served by `factory serve` (factory/server.py). See docs/events.md and docs/ui-handoff.md.
 
-export type Outcome = 'pass' | 'escalate'
-export type RunStatus = 'running' | 'shipped' | 'escalated'
+/** 'closed': nothing left to do and no human needed (today: already fixed in production) */
+export type Outcome = 'pass' | 'escalate' | 'closed'
+export type RunStatus = 'running' | 'shipped' | 'escalated' | 'closed'
 
 export interface Bug {
   id: string
@@ -46,7 +47,7 @@ export type StationFinished = Base & {
   evidence: Evidence
 }
 export type Escalated = Base & { type: 'escalated'; station: string; reason: string }
-export type RunFinished = Base & { type: 'run_finished'; outcome: 'shipped' | 'escalated' }
+export type RunFinished = Base & { type: 'run_finished'; outcome: 'shipped' | 'escalated' | 'closed' }
 
 /** Traffic metrics for one side of a canary step (factory/traffic.py Metrics.summary) */
 export interface Metrics {

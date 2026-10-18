@@ -11,6 +11,11 @@ const OK = (
     <path d="M3 8.5l3 3 7-7" fill="none" stroke="var(--pass-ink)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 )
+const EQ = (
+  <svg className="eq" viewBox="0 0 16 16" aria-hidden="true" style={{ position: 'absolute' }}>
+    <path d="M4 6h8M4 10h8" fill="none" stroke="var(--closed-ink)" strokeWidth="2.2" strokeLinecap="round" />
+  </svg>
+)
 const X = (
   <svg className="x" viewBox="0 0 16 16" aria-hidden="true" style={{ position: 'absolute' }}>
     <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="var(--halt-ink)" strokeWidth="2.2" strokeLinecap="round" />
@@ -18,7 +23,7 @@ const X = (
 )
 
 export function Lamp() {
-  return <span className="lamp">{OK}{X}</span>
+  return <span className="lamp">{OK}{X}{EQ}</span>
 }
 
 /** The model reviewer was switched off for this run (dev mode). It passed, but nobody reviewed. */
@@ -39,7 +44,7 @@ function Outcome({ run, onOpen }: { run: RunState; onOpen: () => void }) {
   return (
     <button type="button" className={`outcome ${cls}`} onClick={onOpen} title="Open run detail">
       {label}
-      <small>{run.crash ? 'pipeline error' : esc ? `at ${stationInfo(esc.station).label}` : run.status === 'running' ? 'in progress' : 'open run →'}</small>
+      <small>{run.crash ? 'pipeline error' : esc ? `at ${stationInfo(esc.station).label}` : run.closed ? 'already fixed' : run.status === 'running' ? 'in progress' : 'open run →'}</small>
     </button>
   )
 }

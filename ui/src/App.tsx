@@ -124,7 +124,7 @@ export default function App() {
           <div>
             <div className="board-head">
               <h1 className="h-display">The line</h1>
-              <span className="sub">{lanes.length ? `${lanes.length} run${lanes.length > 1 ? 's' : ''} · ${lanes.filter((r) => r.status === 'shipped').length} shipped · ${lanes.filter((r) => r.status === 'escalated').length} escalated` : 'No runs on the board'}</span>
+              <span className="sub">{lanes.length ? `${lanes.length} run${lanes.length > 1 ? 's' : ''} · ${lanes.filter((r) => r.status === 'shipped').length} shipped · ${lanes.filter((r) => r.status === 'escalated').length} escalated${lanes.some((r) => r.status === 'closed') ? ` · ${lanes.filter((r) => r.status === 'closed').length} closed` : ''}` : 'No runs on the board'}</span>
               <span className="spacer" />
               <Launcher mode={mode} setMode={setMode} meta={f.meta} bugs={f.bugs} prod={f.prod} onRun={onRun} />
             </div>

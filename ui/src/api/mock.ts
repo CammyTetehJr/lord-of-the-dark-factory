@@ -383,6 +383,7 @@ function createMock(): FactorySource & { tamper(seq?: number): void; restore(): 
     const steps = plan(bug.id, fixer, reproducer, classifier, reviewer)
     await emit(run_id, 'run_started', { bug, fixer, reproducer, classifier, reviewer, deploy, target: { repo: '../dark-factory-target', ref: 'main', commit: '1feb6cf' }, policy: {}, stations: STATIONS })
     let escalation: { station: string; reason: string } | null = null
+    let closed = false
     for (const step of steps) {
       if (line.paused) {
         const reason = 'Line paused by a human operator before this station.'
@@ -403,11 +404,24 @@ function createMock(): FactorySource & { tamper(seq?: number): void; restore(): 
       } else {
         await sleep(step.ms)
       }
+      // mirrors production_check.py: canary runs check the qualified test against production first
+      if (step.station === 'reproduce' && step.outcome === 'pass' && deploy === 'canary') {
+        const fixedBy = prod.history.find((h) => h.event === 'promoted' && !h.reverted && h.title === bug.title)
+        if (fixedBy?.commit) {
+          const subject = prod.commits.find((c) => c.sha === fixedBy.commit)?.msg ?? bug.title
+          Object.assign(step, { outcome: 'closed' as Outcome,
+            reason: `Already fixed in production by ${fixedBy.commit.slice(0, 10)} (${subject}). The reproducing test fails on the base commit but passes on production. Nothing to do.`,
+            evidence: { ...step.evidence, production_check: { production_head: prod.stable?.commit, fixed_by: fixedBy.commit, fixed_by_subject: subject } } })
+        } else {
+          step.evidence = { ...step.evidence, production_check: 'still broken in production' }
+        }
+      }
       await emit(run_id, 'station_finished', { station: step.station, outcome: step.outcome, reason: step.reason, evidence: step.evidence })
+      if (step.outcome === 'closed') { closed = true; break }
       if (step.outcome === 'escalate' && !escalation) escalation = { station: step.station, reason: step.reason }
     }
     if (escalation) await emit(run_id, 'escalated', escalation)
-    await emit(run_id, 'run_finished', { outcome: escalation ? 'escalated' : 'shipped' })
+    await emit(run_id, 'run_finished', { outcome: escalation ? 'escalated' : closed ? 'closed' : 'shipped' })
   }
 
   const stamp = () => new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z'
