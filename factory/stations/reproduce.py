@@ -18,8 +18,8 @@ BROKEN_TEST_ERRORS = {"ImportError", "ModuleNotFoundError", "SyntaxError", "Inde
 class Reproducer(Protocol):
     name: str
 
-    def candidates(self, bug: BugReport, repo: Workspace) -> list[str]:
-        """Return candidate pytest file contents that should reproduce the bug."""
+    def candidates(self, bug: BugReport, repo: Workspace) -> list:
+        """Return Candidate objects (code + metadata) that should reproduce the bug."""
 
 
 def repro_test_path(bug: BugReport) -> str:
@@ -48,18 +48,25 @@ def _judge(results: list[TestResult]) -> tuple[bool, str]:
 def reproduce(bug: BugReport, ws: Workspace, reproducer: Reproducer, policy: Policy) -> tuple[Verdict, str | None]:
     path = repro_test_path(bug)
     attempts = []
-    for n, code in enumerate(reproducer.candidates(bug, ws), 1):
+    candidates = reproducer.candidates(bug, ws)
+    for n, cand in enumerate(candidates, 1):
+        code = cand.code
+        if not code:
+            attempts.append({"candidate": n, "qualified": False, "runs": [],
+                             "reason": cand.meta.get("error", "no test produced"), "generator": cand.meta})
+            continue
         ws.write_file(path, code)
         results = [ws.run_tests(path, tag=f"repro-c{n}-r{i}") for i in range(policy.repro_reruns)]
         (ws.path / path).unlink()
         ok, why = _judge(results)
         outcomes = ["red" if not r.passed else "green" for r in results]
         attempts.append({"candidate": n, "qualified": ok, "reason": why, "runs": outcomes,
-                         "first_run": results[0].summary()})
+                         "first_run": results[0].summary(), "generator": cand.meta, "test_code": code})
         if ok:
             return Verdict("reproduce", "pass", f"Reproducing test found: {why}.",
                            {"reproducer": reproducer.name, "test_path": path, "attempts": attempts,
                             "test_code": code}), code
-    reason = "No candidate test reproduces the bug reliably." if attempts else "Reproducer produced no candidate tests."
+    reason = (f"None of {len(attempts)} candidate tests reproduces the bug reliably." if attempts
+              else "Reproducer produced no candidate tests.")
     return Verdict("reproduce", "escalate", reason,
                    {"reproducer": reproducer.name, "attempts": attempts}), None

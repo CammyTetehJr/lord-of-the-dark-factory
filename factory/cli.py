@@ -100,7 +100,7 @@ def main() -> None:
         sp = sub.add_parser(name, help=help_)
         sp.add_argument("bugs", nargs="*", help="bug ids (default: all in inbox)")
         sp.add_argument("--fixer", default="reference", help="reference | rogue:<mode>")
-        sp.add_argument("--reproducer", default="dev", help="dev")
+        sp.add_argument("--reproducer", default="dev", help="dev | nemotron")
         sp.set_defaults(fn=fn)
 
     sp = sub.add_parser("verify", help="verify the event log hash chain")

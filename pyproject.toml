@@ -5,6 +5,7 @@ description = "Confidence layer for autonomous bug resolution"
 requires-python = ">=3.11"
 dependencies = [
     "pyyaml==6.0.2",
+    "openai==1.59.7",
 ]
 
 [project.optional-dependencies]
