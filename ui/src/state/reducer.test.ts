@@ -52,6 +52,23 @@ describe('reducer', () => {
     expect(s.runs.r4.byStation.factory).toBeUndefined()
   })
 
+  it('follows a canary through its steps to a rollback', () => {
+    const prog = (phase: string, extra = {}): FactoryEvent => ({ ...base('r6'), type: 'deploy_progress', station: 'deploy', phase, ...extra } as FactoryEvent)
+    const m = (p95: number) => ({ requests: 80, errors: 0, error_rate: 0, p50_ms: 2, p95_ms: p95 })
+    const s = fold([
+      started('r6'), st('r6', 'deploy'),
+      prog('starting_canary'),
+      prog('canary_step', { canary_pct: 10 }),
+      prog('canary_step_finished', { canary_pct: 10, ok: false, detail: 'p95 latency 144.4 ms > limit 17.3 ms (stable p95 7.3 ms)', canary: m(144.4), stable: m(6.6) }),
+      prog('rolled_back', { reason: 'Canary breached SLO at 10% traffic.' }),
+    ])
+    const c = s.runs.r6.canary!
+    expect(c.phase).toBe('rolled_back')
+    expect(c.steps).toHaveLength(1)
+    expect(c.steps[0]).toMatchObject({ pct: 10, ok: false, limitMs: 17.3 })
+    expect(c.reason).toBe('Canary breached SLO at 10% traffic.')
+  })
+
   it('ignores events it has already seen (SSE reconnect)', () => {
     const e = started('r5')
     const once = apply(emptyState, e)

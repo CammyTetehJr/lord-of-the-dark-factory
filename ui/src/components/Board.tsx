@@ -100,7 +100,9 @@ export function Board({ runs, stations, selected, onSelect, onOpen, now }: {
                 >
                   <span className="belt" />
                   <Lamp />
-                  <span className="elapsed">{elapsed(st, now)}</span>
+                  <span className="elapsed">{s === 'deploy' && st.status === 'running' && run.canary?.phase === 'stepping'
+                    ? `canary ${run.canary.steps[run.canary.steps.length - 1]?.pct ?? 0}%`
+                    : elapsed(st, now)}</span>
                 </button>
               )
             })}

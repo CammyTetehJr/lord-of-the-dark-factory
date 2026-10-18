@@ -1,6 +1,6 @@
 // One reducer for both clocks: live mode folds the SSE feed through it, replay folds a slice of
 // one run's events. Every component reads FactoryState only, so replay looks exactly like live.
-import type { Bug, Evidence, FactoryEvent, Outcome, RunStatus } from '../api/types'
+import type { Bug, Evidence, FactoryEvent, Metrics, Outcome, RunStatus } from '../api/types'
 
 export type StationStatus = 'idle' | 'running' | 'pass' | 'escalate' | 'held' | 'skipped'
 
@@ -11,6 +11,24 @@ export interface StationState {
   outcome?: Outcome
   reason?: string
   evidence?: Evidence
+}
+
+export interface CanaryStep {
+  pct: number
+  /** undefined while traffic is still flowing at this step */
+  ok?: boolean
+  detail?: string
+  canary?: Metrics
+  stable?: Metrics
+  /** the p95 limit this step was judged against, read from `detail` ("… limit 17.3 ms …") */
+  limitMs?: number
+}
+
+export interface CanaryState {
+  phase: 'starting' | 'stepping' | 'promoted' | 'rolled_back'
+  steps: CanaryStep[]
+  reason?: string
+  commit?: string
 }
 
 export interface RunState {
@@ -24,6 +42,10 @@ export interface RunState {
   startedAt: string
   finishedAt?: string
   escalation?: { station: string; reason: string; held: boolean }
+  /** 'canary' or 'branch'; older runs predate the field */
+  deploy?: string
+  /** live canary progress, from deploy_progress events */
+  canary?: CanaryState
   /** set when the pipeline itself crashed (station "factory") */
   crash?: string
   firstSeq: number
@@ -43,6 +65,22 @@ export const emptyState: FactoryState = { runs: {}, order: [], lastSeq: 0, event
 const POST_CHECKS = ['oracle', 'diff_inspection']
 
 /** A station escalated because a human pulled the andon cord (factory/pipeline.py, LinePaused). */
+export function limitFrom(detail: string | undefined): number | undefined {
+  const m = detail ? /limit ([\d.]+) ms/.exec(detail) : null
+  return m ? Number(m[1]) : undefined
+}
+
+/** Canary state from a finished deploy's evidence, for runs whose progress events we did not see. */
+export function canaryFromEvidence(ev: Evidence | undefined, outcome: Outcome | undefined, reason?: string): CanaryState | undefined {
+  if (!ev || ev.mode !== 'canary') return undefined
+  const steps: CanaryStep[] = (ev.steps ?? []).map((s: Evidence) => ({
+    pct: s.canary_pct, ok: s.ok, detail: s.detail, canary: s.canary, stable: s.stable, limitMs: limitFrom(s.detail),
+  }))
+  if (ev.promoted_commit) return { phase: 'promoted', steps, commit: ev.promoted_commit }
+  if (outcome === 'escalate') return { phase: 'rolled_back', steps, reason }
+  return { phase: steps.length ? 'stepping' : 'starting', steps }
+}
+
 export function isHeld(evidence: Evidence | undefined): boolean {
   return Boolean(evidence && typeof evidence.line === 'object' && evidence.line?.paused)
 }
@@ -71,6 +109,7 @@ export function apply(state: FactoryState, e: FactoryEvent): FactoryState {
         fixer: e.fixer,
         reproducer: e.reproducer,
         stations: e.stations,
+        deploy: e.deploy,
         byStation: Object.fromEntries(e.stations.map((s) => [s, { status: 'idle' as StationStatus }])),
         status: 'running',
         startedAt: e.ts,
@@ -96,6 +135,20 @@ export function apply(state: FactoryState, e: FactoryEvent): FactoryState {
           }),
           lastSeq: e.seq,
         }
+      })
+    case 'deploy_progress':
+      return patchRun(next, e.run_id, (r) => {
+        const c: CanaryState = r.canary ?? { phase: 'starting', steps: [] }
+        let canary: CanaryState = c
+        if (e.phase === 'starting_canary') canary = { phase: 'starting', steps: [] }
+        else if (e.phase === 'canary_step') canary = { ...c, phase: 'stepping', steps: [...c.steps, { pct: e.canary_pct ?? 0 }] }
+        else if (e.phase === 'canary_step_finished') {
+          const done: CanaryStep = { pct: e.canary_pct ?? 0, ok: e.ok, detail: e.detail, canary: e.canary, stable: e.stable, limitMs: limitFrom(e.detail) }
+          const i = c.steps.findIndex((s) => s.pct === done.pct)
+          canary = { ...c, steps: i >= 0 ? c.steps.map((s, k) => (k === i ? done : s)) : [...c.steps, done] }
+        } else if (e.phase === 'rolled_back') canary = { ...c, phase: 'rolled_back', reason: e.reason }
+        else if (e.phase === 'promoted') canary = { ...c, phase: 'promoted', commit: e.commit }
+        return { ...r, canary, lastSeq: e.seq }
       })
     case 'escalated':
       return patchRun(next, e.run_id, (r) => ({

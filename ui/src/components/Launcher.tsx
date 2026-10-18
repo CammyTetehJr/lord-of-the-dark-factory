@@ -1,32 +1,47 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
-import type { Bug, Meta, RunRequest } from '../api/types'
+import type { Bug, Meta, ProdStatus, RunRequest } from '../api/types'
 
 export type Mode = 'dev' | 'live'
+
+/** A promoted, not reverted, fix for this bug is in production: slow_fix's diff would no longer apply. */
+export function prodHasFixFor(prod: ProdStatus | null, bug: Bug | undefined): boolean {
+  if (!prod || !bug) return false
+  return prod.history.some((h) => h.event === 'promoted' && !h.reverted && h.title === bug.title)
+}
 
 /**
  * Dev: the real pipeline with stand-ins and a plain branch deploy, about 2 s per bug, free.
  * Live: every field left out, so the server defaults to Nemotron in every role and the canary deploy.
  */
-export function buildRequest(mode: Mode, bug_id: string, fixer?: string): RunRequest {
-  if (mode === 'dev') return { bug_id, fixer: fixer ?? 'reference', reproducer: 'dev', classifier: 'none', reviewer: 'none', deploy: 'branch' }
-  return fixer && fixer !== 'nemotron' ? { bug_id, fixer } : { bug_id }
+export function buildRequest(mode: Mode, bug_id: string, fixer?: string, deploy?: 'canary' | 'branch'): RunRequest {
+  // slow_fix passes every test; only the canary catches it, so it gets one even in Dev mode (no API key needed)
+  if (fixer === 'rogue:slow_fix' && !deploy) deploy = 'canary'
+  if (mode === 'dev') return { bug_id, fixer: fixer ?? 'reference', reproducer: 'dev', classifier: 'none', reviewer: 'none', deploy: deploy ?? 'branch' }
+  const req: RunRequest = { bug_id }
+  if (fixer && fixer !== 'nemotron') req.fixer = fixer
+  if (deploy) req.deploy = deploy
+  return req
 }
 
-export function Launcher({ mode, setMode, meta, bugs, onRun }: {
+export function Launcher({ mode, setMode, meta, bugs, prod, onRun }: {
   mode: Mode
   setMode: (m: Mode) => void
   meta: Meta | null
   bugs: Bug[]
+  prod: ProdStatus | null
   onRun: (reqs: RunRequest[]) => Promise<void>
 }) {
   const [open, setOpen] = useState(false)
   const [bug, setBug] = useState('bug1')
   const [fixer, setFixer] = useState('default')
+  const [deploy, setDeploy] = useState<'default' | 'canary' | 'branch'>('default')
   const [busy, setBusy] = useState(false)
   const run = async (reqs: RunRequest[]) => { setBusy(true); try { await onRun(reqs) } finally { setBusy(false) } }
   const fixers = (meta?.fixers ?? []).filter((f) => f !== 'nemotron' && f !== 'reference')
   const chosen = fixer === 'default' ? undefined : fixer
+  const chosenDeploy = deploy === 'default' ? undefined : deploy
+  const effectiveDeploy = buildRequest(mode, bug, chosen, chosenDeploy).deploy ?? 'canary'
 
   return (
     <>
@@ -45,7 +60,7 @@ export function Launcher({ mode, setMode, meta, bugs, onRun }: {
               className="popover"
               style={{ left: 0, right: 'auto' }}
               initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
-              onSubmit={async (e) => { e.preventDefault(); await run([buildRequest(mode, bug, chosen)]); setOpen(false) }}
+              onSubmit={async (e) => { e.preventDefault(); await run([buildRequest(mode, bug, chosen, chosenDeploy)]); setOpen(false) }}
             >
               <h4>Run one bug</h4>
               <label className="field" htmlFor="run-bug">Bug
@@ -59,6 +74,22 @@ export function Launcher({ mode, setMode, meta, bugs, onRun }: {
                   {fixers.map((f) => <option key={f} value={f}>{f}</option>)}
                 </select>
               </label>
+              <label className="field" htmlFor="run-deploy">Deploy
+                <select id="run-deploy" className="select" value={deploy} onChange={(e) => setDeploy(e.target.value as typeof deploy)}>
+                  <option value="default">{fixer === 'rogue:slow_fix' ? 'canary to production (needed for slow_fix)' : mode === 'dev' ? 'branch only (Dev default)' : 'canary to production (Live default)'}</option>
+                  <option value="canary">canary to production (about 15 s more)</option>
+                  <option value="branch">branch only, no production</option>
+                </select>
+              </label>
+              {fixer === 'rogue:slow_fix' && (
+                effectiveDeploy === 'canary'
+                  ? <p>Passes every test; the canary is what catches it (about 15 s more, no API key needed).</p>
+                  : <p style={{ color: 'var(--sodium)' }}>With a branch deploy this fix ships: only the canary catches it.</p>
+              )}
+              {fixer === 'rogue:slow_fix' && bug !== 'bug1' && <p style={{ color: 'var(--sodium)' }}>slow_fix only works on bug1.</p>}
+              {fixer === 'rogue:slow_fix' && bug === 'bug1' && effectiveDeploy === 'canary' && prodHasFixFor(prod, bugs.find((b) => b.id === 'bug1')) && (
+                <p style={{ color: 'var(--sodium)' }}>Production already has the honest bug1 fix, so this diff will not apply and it stops at deploy for that reason. Use “Roll back last fix” first.</p>
+              )}
               {fixer === 'rogue:game_test' && mode === 'dev' && (
                 <p style={{ color: 'var(--sodium)' }}>Only the Nemotron reviewer catches this fix. In Dev mode the reviewer is off and it will ship. Switch to Live.</p>
               )}

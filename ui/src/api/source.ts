@@ -1,4 +1,4 @@
-import type { AuditResult, Bug, FactoryEvent, LineState, Meta, ReplayResult, RunRequest } from './types'
+import type { AuditResult, Bug, FactoryEvent, LineState, Meta, ProdStatus, ReplayResult, RollbackResult, RunRequest } from './types'
 
 /** Everything the UI needs from the factory. `http` talks to `factory serve`; `mock` simulates it in the browser. */
 export interface FactorySource {
@@ -16,6 +16,11 @@ export interface FactorySource {
   /** Re-runs every deterministic gate from the signed record (5 to 10 s on the real server). */
   replay(runId: string): Promise<ReplayResult>
   pubkey(): Promise<string>
+  /** Local production behind the canary deploy */
+  prod(): Promise<ProdStatus>
+  prodStart(): Promise<{ url: string }>
+  /** Human kill switch: revert the last promoted fix and restart stable without it */
+  prodRollback(by: string): Promise<RollbackResult>
 }
 
 export type StreamStatus = 'connecting' | 'open' | 'retrying'
@@ -43,6 +48,9 @@ export const httpSource: FactorySource = {
   pause: (by, reason) => json('/api/line/pause', { method: 'POST', body: JSON.stringify({ by, reason }) }),
   resume: (by, reason) => json('/api/line/resume', { method: 'POST', body: JSON.stringify({ by, reason }) }),
   verify: () => json<AuditResult>('/api/audit/verify'),
+  prod: () => json<ProdStatus>('/api/prod'),
+  prodStart: () => json('/api/prod/start', { method: 'POST' }),
+  prodRollback: (by) => json<RollbackResult>('/api/prod/rollback', { method: 'POST', body: JSON.stringify({ by, reason: '' }) }),
   replay: (runId) => json<ReplayResult>(`/api/runs/${encodeURIComponent(runId)}/replay`, { method: 'POST' }),
   async pubkey() {
     const res = await fetch(`${API_URL}/api/audit/pubkey`)
