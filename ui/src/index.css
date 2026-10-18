@@ -26,6 +26,7 @@
   --lamp: clamp(26px, 2.2vw, 34px);
   --rail: clamp(300px, 24vw, 380px);
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --bar-height: 65px;
 }
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
@@ -39,7 +40,7 @@ code, pre, .mono { font-family: var(--mono); }
 .app { min-height: 100%; display: grid; grid-template-rows: auto auto 1fr; }
 .main { display: grid; grid-template-columns: minmax(0, 1fr) var(--rail); min-height: 0; }
 .left { min-width: 0; display: grid; grid-template-rows: auto 1fr; border-right: 1px solid var(--rule); }
-.rail { min-width: 0; display: grid; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); max-height: calc(100vh - 64px); position: sticky; top: 64px; }
+.rail { min-width: 0; display: grid; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); max-height: calc(100vh - var(--bar-height)); position: sticky; top: var(--bar-height); }
 @media (max-width: 1100px) {
   .main { grid-template-columns: 1fr; }
   .left { border-right: 0; }
@@ -49,6 +50,13 @@ code, pre, .mono { font-family: var(--mono); }
 /* ---------- governance bar ---------- */
 .gbar > * { max-width: 100%; }
 .gbar { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 20px; background: var(--panel-2); border-bottom: 1px solid var(--rule); }
+.gbar-status, .gbar-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; }
+.gbar-controls { margin-left: auto; }
+@media (max-width: 1599px) {
+  :root { --bar-height: 105px; }
+  .gbar-status { width: 100%; }
+  .gbar-controls { width: 100%; justify-content: flex-end; }
+}
 .brand { font: 800 24px/1 var(--display); letter-spacing: 0.04em; text-transform: uppercase; margin-right: 6px; white-space: nowrap; }
 .brand small { font: 500 11px/1 var(--mono); letter-spacing: 0.08em; color: var(--faint); margin-left: 8px; }
 .spacer { flex: 1; }
@@ -61,8 +69,8 @@ code, pre, .mono { font-family: var(--mono); }
 .pill.stopped { color: var(--hazard); border-color: var(--hazard); }
 .pill.stopped i { background: var(--hazard); animation: blink 1s steps(2) infinite; }
 .pill.warn { color: var(--sodium); border-color: color-mix(in srgb, var(--sodium) 45%, transparent); }
-.audit-pill { cursor: help; }
-/* the governance bar stays on one row down to 1280 px: below 1400 px drop the key id and the brand subtitle */
+.audit-pill { cursor: help; max-width: 100%; white-space: normal; height: auto; min-height: 30px; padding-top: 6px; padding-bottom: 6px; }
+/* Compact status copy leaves room for both production controls at laptop widths. */
 @media (max-width: 1399px) {
   .audit-key, .brand small { display: none; }
   .gbar { gap: 8px 10px; }
@@ -292,7 +300,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 @media (max-width: 760px) { .cstep { grid-template-columns: 48px minmax(0, 1fr); } .cstep .meter, .cstep-verdict { grid-column: 1 / -1; text-align: left; } }
 
 /* ---------- production + kill switch ---------- */
-.prod { display: inline-flex; align-items: center; gap: 8px; }
+.prod { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
 button.pill { background: transparent; cursor: pointer; }
 .btn.kill { color: var(--halt-ink); border-color: color-mix(in srgb, var(--halt) 55%, var(--rule)); }
 .btn.kill:hover:not(:disabled) { border-color: var(--halt); background: color-mix(in srgb, var(--halt) 10%, var(--panel)); }
@@ -389,7 +397,7 @@ button.pill { background: transparent; cursor: pointer; }
 .locked-card p { margin: 0; font-size: 16px; line-height: 1.5; color: var(--muted); }
 .locked-card code { white-space: nowrap; color: var(--ink); background: var(--floor); padding: 1px 6px; border-radius: 4px; }
 
-/* ---------- hold-to-confirm (roll back) ---------- */
+/* ---------- hold-to-confirm production controls ---------- */
 .hold { --p: 0; position: relative; overflow: hidden; display: inline-grid; justify-items: start; align-content: center; gap: 1px; height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--rule); background: var(--panel); cursor: pointer; text-align: left; touch-action: none; user-select: none; max-width: 230px; }
 .hold::after { content: ''; position: absolute; inset: auto 0 0 0; height: 4px; transform-origin: left; transform: scaleX(var(--p)); background: var(--halt); }
 .hold:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -397,4 +405,36 @@ button.pill { background: transparent; cursor: pointer; }
 .hold .hold-sub { font: 500 11px/1.2 var(--mono); color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hold.kill { border-color: color-mix(in srgb, var(--halt) 55%, var(--rule)); color: var(--halt-ink); }
 .hold.kill:hover:not(:disabled) { background: color-mix(in srgb, var(--halt) 10%, var(--panel)); }
+.hold.reset { border-color: color-mix(in srgb, var(--sodium) 55%, var(--rule)); }
+.hold.reset:hover:not(:disabled) { background: color-mix(in srgb, var(--sodium) 10%, var(--panel)); }
+.hold.reset::after { background: var(--sodium); }
 .popover.toast { width: 340px; }
+
+/* ---------- judge guide ---------- */
+.judge-guide { margin: 18px 20px 0; border: 1px solid var(--rule); border-radius: 12px; background: var(--panel); overflow: hidden; }
+.guide-toggle { width: 100%; border: 0; background: transparent; padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; text-align: left; cursor: pointer; }
+.guide-toggle > span:first-child { display: grid; gap: 4px; }
+.guide-toggle .eyebrow { margin: 0; }
+.guide-toggle strong { font: 700 22px/1.1 var(--display); text-transform: uppercase; letter-spacing: 0.03em; }
+.guide-toggle > span:last-child { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.guide-body { padding: 0 16px 16px; }
+.guide-body > p { margin: 0 0 12px; }
+.guide-intro { font-size: 14px; max-width: 900px; }
+.scenario-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.scenario { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid var(--rule); border-radius: 8px; background: var(--floor); min-width: 0; }
+.scenario.selected { border-color: var(--sodium); }
+.scenario h3 { margin: 0; font-size: 14px; line-height: 1.3; }
+.scenario h3 span { display: block; margin-bottom: 8px; font: 500 11px/1 var(--mono); color: var(--sodium); }
+.scenario p { margin: 0; font-size: 12px; color: var(--muted); }
+.scenario > button { margin-top: auto; max-width: 100%; min-height: 32px; height: auto; padding: 8px 10px; }
+.guide-body .guide-watch { margin: 12px 0 0; font-size: 13px; }
+.guide-body .guide-status { margin: 12px 0 0; font-size: 13px; color: var(--pass-ink); }
+.guide-body .guide-status.error { color: var(--halt-ink); }
+.guide-paused { color: var(--sodium); font-size: 13px; }
+.human-guide { font-size: 13px; margin: 14px 0 0; padding-left: 20px; display: grid; gap: 8px; }
+@media (max-width: 760px) { .scenario-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) {
+  .scenario-grid { grid-template-columns: 1fr; }
+  .gbar { position: relative; }
+  .gbar-controls { justify-content: flex-start; }
+}

@@ -24,13 +24,14 @@ export function buildRequest(mode: Mode, bug_id: string, fixer?: string, deploy?
   return req
 }
 
-export function Launcher({ mode, setMode, meta, bugs, prod, onRun }: {
+export function Launcher({ mode, setMode, meta, bugs, prod, onRun, disabled = false }: {
   mode: Mode
   setMode: (m: Mode) => void
   meta: Meta | null
   bugs: Bug[]
   prod: ProdStatus | null
-  onRun: (reqs: RunRequest[]) => Promise<void>
+  onRun: (reqs: RunRequest[]) => Promise<unknown>
+  disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [bug, setBug] = useState('bug1')
@@ -49,11 +50,11 @@ export function Launcher({ mode, setMode, meta, bugs, prod, onRun }: {
         <button type="button" aria-pressed={mode === 'dev'} onClick={() => setMode('dev')} title="Reference fixer and dev reproducer, no model calls. About 2 s per bug.">Dev</button>
         <button type="button" aria-pressed={mode === 'live'} onClick={() => setMode('live')} title="Nemotron in every role. About 30 to 60 s per bug.">Live · Nemotron</button>
       </div>
-      <button type="button" className="btn primary" disabled={!bugs.length || busy} onClick={() => run(bugs.map((b) => buildRequest(mode, b.id)))}>
+      <button type="button" className="btn primary" disabled={!bugs.length || busy || disabled} onClick={() => run(bugs.map((b) => buildRequest(mode, b.id)))}>
         Run all {bugs.length ? `(${bugs.length})` : ''}
       </button>
       <div className="rel">
-        <button type="button" className="btn" aria-expanded={open} onClick={() => setOpen(!open)} disabled={!bugs.length}>Run one…</button>
+        <button type="button" className="btn" aria-expanded={open} onClick={() => setOpen(!open)} disabled={!bugs.length || disabled}>Run one…</button>
         <AnimatePresence>
           {open && (
             <motion.form
@@ -97,7 +98,7 @@ export function Launcher({ mode, setMode, meta, bugs, prod, onRun }: {
               <p>{mode === 'dev' ? 'Dev: no model calls, about 2 s.' : 'Live: Nemotron in every role you leave at its default, about 30 to 60 s.'}</p>
               <div className="row">
                 <button type="button" className="btn ghost" onClick={() => setOpen(false)}>Cancel</button>
-                <button type="submit" className="btn primary" disabled={busy}>Start run</button>
+                <button type="submit" className="btn primary" disabled={busy || disabled}>Start run</button>
               </div>
             </motion.form>
           )}
