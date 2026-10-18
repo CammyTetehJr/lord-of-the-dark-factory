@@ -10,6 +10,7 @@ import { ProdControl } from './components/ProdControl'
 import { EventStream, Queue } from './components/Rail'
 import { RunDrawer } from './components/RunDrawer'
 import { brokenSeq, pickSource, useFactory, useNow, useStored } from './hooks/useFactory'
+import { auditLabel } from './lib/audit'
 import { escalatedRuns, type RunState } from './state/reducer'
 
 const source = pickSource()
@@ -89,6 +90,19 @@ export default function App() {
   }, [launchNote])
 
   const drawerRun = openRun ? f.state.runs[openRun] : null
+
+  // Missing or expired access code: nothing else on the page can work, so say only that.
+  if (source.kind === 'http' && (f.locked || f.errorStatus === 401)) {
+    return (
+      <main className="locked" role="alert">
+        <div className="locked-card">
+          <div className="brand">Dark Factory</div>
+          <h1>This link needs an access code.</h1>
+          <p>Use the full link you were given, including the part that starts with <code>?code=</code>. The code is remembered in this browser for a day.</p>
+        </div>
+      </main>
+    )
+  }
   const line = f.line
 
   return (
@@ -98,8 +112,8 @@ export default function App() {
         <span className={`pill ${line.paused ? 'stopped' : 'ok'}`} role="status">
           <i />{line.paused ? 'LINE STOPPED' : 'LINE RUNNING'}
         </span>
-        <span className={`pill audit-pill ${f.audit ? (f.audit.ok ? 'ok' : 'bad') : ''}`} title={f.audit?.message ?? 'Checking the audit chain'} role="status">
-          <i />{f.audit ? `${f.audit.ok ? '✓' : '✗'} ${f.audit.message}` : 'checking chain…'}
+        <span className={`pill audit-pill ${f.audit ? (f.audit.ok ? 'ok' : 'bad') : ''}`} title={auditLabel(f.audit).title} role="status">
+          <i />{auditLabel(f.audit).text}{auditLabel(f.audit).key && <span className="audit-key"> by {auditLabel(f.audit).key}</span>}
         </span>
         {f.stream !== 'open' && <span className="pill warn"><i />{f.stream === 'connecting' ? 'connecting…' : 'reconnecting…'}</span>}
         <span className="spacer" />
@@ -124,12 +138,6 @@ export default function App() {
             <b>Line stopped{line.by ? ` by ${line.by}` : ''}{line.ts ? ` at ${line.ts.slice(11, 19)} UTC` : ''}.</b>
             {line.reason && <span>“{line.reason}”</span>}
             <span>Runs in progress finish their current station, then go to the queue. New runs stop before scope.</span>
-          </div>
-        )}
-        {f.error && source.kind === 'http' && f.errorStatus === 401 && (
-          <div className="banner error" role="alert">
-            <b>This link needs an access code.</b>
-            <span>Open the full link you were given, including <code>?code=…</code>. The code is remembered for a day after that.</span>
           </div>
         )}
         {f.error && source.kind === 'http' && f.errorStatus !== 401 && (
@@ -162,7 +170,7 @@ export default function App() {
               <div className="empty-board">
                 <b>The line is quiet</b>
                 <span>Press <b style={{ font: 'inherit', textTransform: 'none' }}>Run all</b> to send every bug in the inbox through the {stations.length} stations. Each bug gets a lane, and each station lights up as the bug reaches it.</span>
-                <span className="note">{mode === 'dev' ? 'Dev mode: reference fixer and dev reproducer, no model calls, about 2 s per bug.' : 'Live mode: Nemotron in every role, about 30 to 60 s per bug.'}</span>
+                <span className="note">{mode === 'dev' ? 'Dev mode: reference fixer and dev reproducer, no model calls, about 2 s per bug.' : 'Live mode: Nemotron in every role, about 30 to 60 s per bug.'}</span>
               </div>
             )}
           </div>

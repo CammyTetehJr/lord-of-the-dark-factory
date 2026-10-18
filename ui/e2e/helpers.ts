@@ -46,6 +46,19 @@ export async function inspect(l: Locator, station: string) {
 
 export const inspector = (page: Page) => page.locator('.inspector')
 
+/** Press and hold a hold-to-confirm control past its one-second threshold. */
+export async function hold(page: Page, l: Locator) {
+  await expect(l).toBeEnabled()
+  const box = await l.boundingBox()
+  if (!box) throw new Error('control not visible')
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.waitForTimeout(1300)
+  await page.mouse.up()
+}
+
+export const rollbackButton = (page: Page) => page.getByRole('button', { name: /^Hold to roll back/ })
+
 /** The andon cord needs a one-second hold. */
 export async function holdAndon(page: Page) {
   const box = await page.getByRole('button', { name: /Stop the line/ }).boundingBox()

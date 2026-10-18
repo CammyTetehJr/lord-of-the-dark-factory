@@ -34,6 +34,13 @@ export type StreamStatus = 'connecting' | 'open' | 'retrying'
 // without credentials, and credentialed cross-origin requests would then fail in dev.
 export const API_URL: string = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? 'http://127.0.0.1:8100' : '')
 
+/** Any API call answering 401 means the access code is missing or expired; the app listens for this. */
+const unauthorizedListeners = new Set<() => void>()
+export function onUnauthorized(fn: () => void): () => void {
+  unauthorizedListeners.add(fn)
+  return () => { unauthorizedListeners.delete(fn) }
+}
+
 /** An API error with the server's own plain-language reason (FastAPI's `detail`). */
 export class ApiError extends Error {
   readonly status: number
@@ -49,6 +56,7 @@ async function json<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   })
   if (!res.ok) {
+    if (res.status === 401) unauthorizedListeners.forEach((fn) => fn())
     const text = await res.text().catch(() => '')
     let detail = text
     try { detail = (JSON.parse(text) as { detail?: string }).detail ?? text } catch { /* not JSON */ }

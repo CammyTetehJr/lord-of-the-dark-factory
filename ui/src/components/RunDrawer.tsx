@@ -27,7 +27,7 @@ function Replay({ source, run }: { source: FactorySource; run: RunState }) {
         Model decisions are not re-sampled; their recorded prompt hashes are shown instead.
       </p>
       <button type="button" className="btn" onClick={go} disabled={state.busy || run.status === 'running'}>
-        {state.busy ? 'Replaying… (5 to 10 s)' : r ? 'Replay again' : 'Replay this run'}
+        {state.busy ? 'Replaying… (5 to 10 s)' : r ? 'Replay again' : 'Replay this run'}
       </button>
       {run.status === 'running' && <span className="note" style={{ marginLeft: 10 }}>Available once the run finishes.</span>}
       {state.error && <p className="reason escalate">{state.error}</p>}
