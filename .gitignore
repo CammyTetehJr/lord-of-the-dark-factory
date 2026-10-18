@@ -11,3 +11,4 @@ node_modules/
 *.egg-info/
 .factory-keys/
 deploy/
+logs/
