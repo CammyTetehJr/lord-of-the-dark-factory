@@ -58,7 +58,32 @@ function Scope({ ev }: { ev: Evidence }) {
         <div className="eyebrow">Classifier</div>
         {clf === 'disabled' && <div className="note">Disabled for this run.</div>}
         {clf == null && <div className="note">Not consulted: a rule already escalated.</div>}
-        {isCall(clf) && (
+        {clf && typeof clf === 'object' && Array.isArray(clf.votes) && (
+          <>
+            <div className="chips" style={{ marginTop: 4, alignItems: 'center' }}>
+              <span className={`chip ${clf.trivial_votes >= clf.needed ? 'ok' : 'hit'}`}>{clf.trivial_votes}/{clf.votes.length} votes say trivial</span>
+              <span className="note">needs {clf.needed}</span>
+            </div>
+            {clf.votes.map((v: Evidence, i: number) => (
+              <div key={i} className="cand">
+                <div className="chips" style={{ marginTop: 6 }}>
+                  <span className="chip">vote {i + 1}</span>
+                  {v.answer && typeof v.answer === 'object' ? (
+                    <>
+                      <span className={`chip ${v.answer.trivial ? 'ok' : 'hit'}`}>{v.answer.trivial ? 'trivial' : 'not trivial'}</span>
+                      {v.answer.category && <span className="chip">{v.answer.category}</span>}
+                      {v.answer.confidence != null && <span className="chip">confidence {Number(v.answer.confidence).toFixed(2)}</span>}
+                    </>
+                  ) : <span className="chip hit">{v.error ? 'failed' : 'unreadable'}</span>}
+                </div>
+                {v.answer?.reason && <div className="note" style={{ marginTop: 4 }}>{v.answer.reason}</div>}
+                {v.error && <div className="note" style={{ marginTop: 4 }}>{v.error}</div>}
+                {isCall(v) && <Call call={v} label={`vote ${i + 1}`} />}
+              </div>
+            ))}
+          </>
+        )}
+        {isCall(clf) && !Array.isArray(clf.votes) && (
           <>
             {clf.answer && typeof clf.answer === 'object' && (
               <div className="chips" style={{ marginTop: 4 }}>
@@ -172,9 +197,11 @@ function Review({ ev }: { ev: Evidence }) {
 function Deploy({ ev }: { ev: Evidence }) {
   return (
     <dl className="kv">
-      <dt>branch</dt><dd className="mono">{ev.branch}</dd>
+      <dt>mode</dt><dd><span className="chip">{ev.mode === 'branch' ? 'branch only, no production deploy' : ev.mode ?? 'branch'}</span></dd>
+      {ev.branch && <><dt>branch</dt><dd className="mono">{ev.branch}</dd></>}
       {ev.commit && <><dt>commit</dt><dd className="mono">{String(ev.commit).slice(0, 10)}</dd></>}
-      <dt>canary</dt><dd><span className="chip">{ev.canary === 'not_implemented' ? 'not wired yet' : String(ev.canary)}</span></dd>
+      {ev.release_suite && <><dt>release suite</dt><dd className="tnum">{Object.entries(ev.release_suite.counts ?? {}).map(([k, v]) => `${v} ${k}`).join(', ')}</dd></>}
+      {ev.git && <><dt>git</dt><dd className="mono">{ev.git}</dd></>}
     </dl>
   )
 }
@@ -214,7 +241,8 @@ export function StationEvidence({ station, st, compact }: { station: string; st:
 export function modelCalls(byStation: Record<string, StationState>): { station: string; role: string; call: ModelCall }[] {
   const out: { station: string; role: string; call: ModelCall }[] = []
   const clf = byStation.scope?.evidence?.classifier
-  if (isCall(clf)) out.push({ station: 'scope', role: 'classifier', call: clf })
+  if (clf && Array.isArray(clf.votes)) clf.votes.forEach((v: unknown, i: number) => { if (isCall(v)) out.push({ station: 'scope', role: `classifier · vote ${i + 1}`, call: v }) })
+  else if (isCall(clf)) out.push({ station: 'scope', role: 'classifier', call: clf })
   for (const a of byStation.reproduce?.evidence?.attempts ?? []) if (isCall(a.generator)) out.push({ station: 'reproduce', role: `generator · candidate ${a.candidate}`, call: a.generator })
   for (const a of byStation.fix?.evidence?.fixer_meta?.attempts ?? []) if (isCall(a)) out.push({ station: 'fix', role: `fixer · attempt ${a.attempt}`, call: a })
   const rv = byStation.review?.evidence

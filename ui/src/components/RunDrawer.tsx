@@ -5,6 +5,7 @@ import type { FactoryEvent, ReplayResult } from '../api/types'
 import { shortModel, stationInfo } from '../lib/stations'
 import type { RunState } from '../state/reducer'
 import { isOff, Lamp } from './Board'
+import { CanaryPanel, canaryOf } from './CanaryPanel'
 import { DiffView, modelCalls, StationEvidence } from './Evidence'
 
 function Replay({ source, run }: { source: FactorySource; run: RunState }) {
@@ -122,7 +123,9 @@ export function RunDrawer({ run, events, source, onClose }: { run: RunState; eve
                       <span className="note">{info.kind === 'model' ? 'model' : 'deterministic gate'}</span>
                     </div>
                     {st.reason && <p className={`reason ${st.status}`} style={{ fontSize: 15, margin: '6px 0 10px' }}>{st.reason}</p>}
-                    <StationEvidence station={s} st={st} compact />
+                    {s === 'deploy' && canaryOf(run)
+                      ? <CanaryPanel canary={canaryOf(run)!} evidence={st.evidence} reason={st.reason} showTable />
+                      : <StationEvidence station={s} st={st} compact />}
 
                   </div>
                 </div>

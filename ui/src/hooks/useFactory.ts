@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { mockSource } from '../api/mock'
 import { httpSource, type FactorySource, type StreamStatus } from '../api/source'
-import type { AuditResult, Bug, FactoryEvent, LineState, Meta } from '../api/types'
+import type { AuditResult, Bug, FactoryEvent, LineState, Meta, ProdStatus } from '../api/types'
 import { apply, emptyState, type FactoryState } from '../state/reducer'
 
 export function pickSource(): FactorySource {
@@ -33,7 +33,13 @@ export function useFactory(source: FactorySource) {
   const [line, setLine] = useState<LineState>({ paused: false })
   const [audit, setAudit] = useState<AuditResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [prod, setProd] = useState<ProdStatus | null>(null)
+  const [prodError, setProdError] = useState<string | null>(null)
   const auditTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+
+  const refreshProd = useCallback(() => {
+    source.prod().then((p) => { setProd(p); setProdError(null) }, (e: Error) => { setProd(null); setProdError(e.message) })
+  }, [source])
 
   const refreshAudit = useCallback(() => {
     // If the server can't answer, drop back to "checking": never show green we can't currently back up.
@@ -62,19 +68,29 @@ export function useFactory(source: FactorySource) {
         clearTimeout(auditTimer.current)
         auditTimer.current = setTimeout(refreshAudit, 400)
       }
+      // a promoted or rolled-back canary changes production
+      if (e.type === 'deploy_progress' && (e.phase === 'promoted' || e.phase === 'rolled_back')) refreshProd()
     }, setStream)
-  }, [source, refreshAudit])
+  }, [source, refreshAudit, refreshProd])
 
   // the andon state has no event of its own, so poll it; audit is polled to catch edits to the file
   useEffect(() => {
     const tick = () => source.line().then(setLine, () => {})
     tick()
     refreshAudit()
+    refreshProd()
     const a = setInterval(tick, 2000)
     const b = setInterval(refreshAudit, 5000)
-    return () => { clearInterval(a); clearInterval(b) }
-  }, [source, refreshAudit])
+    const c = setInterval(refreshProd, 4000)
+    return () => { clearInterval(a); clearInterval(b); clearInterval(c) }
+  }, [source, refreshAudit, refreshProd])
 
+  const prodStart = useCallback(async () => { await source.prodStart(); refreshProd() }, [source, refreshProd])
+  const prodRollback = useCallback(async (by: string) => {
+    const r = await source.prodRollback(by)
+    refreshProd()
+    return r
+  }, [source, refreshProd])
   const pause = useCallback(async (by: string, reason: string) => setLine(await source.pause(by, reason)), [source])
   const resume = useCallback(async (by: string, reason: string) => setLine(await source.resume(by, reason)), [source])
 
@@ -84,7 +100,7 @@ export function useFactory(source: FactorySource) {
     return m
   }, [events])
 
-  return { state, events, eventsByRun, stream, meta, bugs, line, audit, error, pause, resume, refreshAudit }
+  return { state, events, eventsByRun, stream, meta, bugs, line, audit, error, pause, resume, refreshAudit, prod, prodError, prodStart, prodRollback }
 }
 
 export function useNow(active: boolean, ms = 200): number {

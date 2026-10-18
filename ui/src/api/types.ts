@@ -32,6 +32,7 @@ export type RunStarted = Base & {
   reproducer: string
   classifier?: string
   reviewer?: string
+  deploy?: string
   target?: { repo: string; ref: string; commit: string }
   policy?: Record<string, unknown>
   stations: string[]
@@ -47,7 +48,31 @@ export type StationFinished = Base & {
 export type Escalated = Base & { type: 'escalated'; station: string; reason: string }
 export type RunFinished = Base & { type: 'run_finished'; outcome: 'shipped' | 'escalated' }
 
-export type FactoryEvent = RunStarted | StationStarted | StationFinished | Escalated | RunFinished
+/** Traffic metrics for one side of a canary step (factory/traffic.py Metrics.summary) */
+export interface Metrics {
+  requests: number
+  errors: number
+  error_rate: number
+  p50_ms: number
+  p95_ms: number
+  error_samples?: string[]
+}
+
+/** Canary deploys only, several per run (factory/stations/deploy.py) */
+export type DeployProgress = Base & {
+  type: 'deploy_progress'
+  station: 'deploy'
+  phase: 'starting_canary' | 'canary_step' | 'canary_step_finished' | 'rolled_back' | 'promoted'
+  canary_pct?: number
+  ok?: boolean
+  detail?: string
+  canary?: Metrics
+  stable?: Metrics
+  reason?: string
+  commit?: string
+}
+
+export type FactoryEvent = RunStarted | StationStarted | StationFinished | DeployProgress | Escalated | RunFinished
 
 export interface Meta {
   stations: string[]
@@ -57,6 +82,30 @@ export interface Meta {
   reviewers?: string[]
   deploys?: string[]
   target: { repo: string; ref: string }
+}
+
+/** GET /api/prod (factory/prod.py Prod.status) */
+export interface ProdHistoryEntry {
+  ts: string
+  event: 'stable_started' | 'promoted' | 'rolled_back' | 'manual_rollback' | string
+  run_id?: string
+  title?: string
+  commit?: string
+  reason?: string
+  by?: string
+  reverted?: string | boolean
+  port?: number
+}
+export interface ProdStatus {
+  up: boolean
+  url: string | null
+  stable: { name: string; commit: string; port: number; pid: number; dir?: string } | null
+  mainline: string[]
+  history: ProdHistoryEntry[]
+}
+export interface RollbackResult {
+  ok: boolean
+  message: string
 }
 
 export interface LineState {

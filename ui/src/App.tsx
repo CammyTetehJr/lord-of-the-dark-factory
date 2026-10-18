@@ -6,6 +6,7 @@ import { Andon } from './components/Andon'
 import { Board, type Selection } from './components/Board'
 import { Inspector } from './components/Inspector'
 import { Launcher, type Mode } from './components/Launcher'
+import { ProdControl } from './components/ProdControl'
 import { EventStream, Queue } from './components/Rail'
 import { RunDrawer } from './components/RunDrawer'
 import { brokenSeq, pickSource, useFactory, useNow, useStored } from './hooks/useFactory'
@@ -86,7 +87,7 @@ export default function App() {
         </span>
         {f.stream !== 'open' && <span className="pill warn"><i />{f.stream === 'connecting' ? 'connecting…' : 'reconnecting…'}</span>}
         <span className="spacer" />
-        <Launcher mode={mode} setMode={setMode} meta={f.meta} bugs={f.bugs} onRun={onRun} />
+        <ProdControl prod={f.prod} error={f.prodError} operator={operator} onStart={f.prodStart} onRollback={f.prodRollback} />
         <Andon
           line={line}
           operator={operator}
@@ -125,6 +126,9 @@ export default function App() {
               <h1 className="h-display">The line</h1>
               <span className="sub">{lanes.length ? `${lanes.length} run${lanes.length > 1 ? 's' : ''} · ${lanes.filter((r) => r.status === 'shipped').length} shipped · ${lanes.filter((r) => r.status === 'escalated').length} escalated` : 'No runs on the board'}</span>
               <span className="spacer" />
+              <Launcher mode={mode} setMode={setMode} meta={f.meta} bugs={f.bugs} onRun={onRun} />
+            </div>
+            <div className="board-tools">
               {picked && <button type="button" className="btn small ghost" onClick={() => setPicked(null)}>Follow live</button>}
               {lanes.length > 0 && <button type="button" className="btn small ghost" onClick={() => { setClearedAt(f.state.lastSeq); setPicked(null) }}>Clear board</button>}
               {clearedAt > 0 && <button type="button" className="btn small ghost" onClick={() => setClearedAt(0)}>Show earlier runs</button>}

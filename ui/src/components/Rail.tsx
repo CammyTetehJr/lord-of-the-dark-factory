@@ -68,6 +68,12 @@ function describe(e: FactoryEvent) {
     case 'run_started': return <>run_started · {e.bug.id} · {e.fixer}</>
     case 'station_started': return <>▸ {e.station}</>
     case 'station_finished': return <>■ {e.station} <span className={`o-${e.outcome}`}>{e.outcome}</span></>
+    case 'deploy_progress':
+      if (e.phase === 'canary_step') return <>▸ canary {e.canary_pct}%</>
+      if (e.phase === 'canary_step_finished') return <>■ canary {e.canary_pct}% <span className={`o-${e.ok ? 'pass' : 'escalate'}`}>{e.ok ? 'within SLO' : 'breach'}</span></>
+      if (e.phase === 'rolled_back') return <>canary <span className="o-escalate">rolled back</span></>
+      if (e.phase === 'promoted') return <>canary <span className="o-pass">promoted</span> · {e.commit?.slice(0, 7)}</>
+      return <>canary starting</>
     case 'escalated': return <>escalated · {e.station}</>
     case 'run_finished': return <>run_finished · {e.outcome}</>
     default: return (e as { type: string }).type

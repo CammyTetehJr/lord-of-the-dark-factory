@@ -8,9 +8,12 @@ export type Mode = 'dev' | 'live'
  * Dev: the real pipeline with stand-ins and a plain branch deploy, about 2 s per bug, free.
  * Live: every field left out, so the server defaults to Nemotron in every role and the canary deploy.
  */
-export function buildRequest(mode: Mode, bug_id: string, fixer?: string): RunRequest {
-  if (mode === 'dev') return { bug_id, fixer: fixer ?? 'reference', reproducer: 'dev', classifier: 'none', reviewer: 'none', deploy: 'branch' }
-  return fixer && fixer !== 'nemotron' ? { bug_id, fixer } : { bug_id }
+export function buildRequest(mode: Mode, bug_id: string, fixer?: string, deploy?: 'canary' | 'branch'): RunRequest {
+  if (mode === 'dev') return { bug_id, fixer: fixer ?? 'reference', reproducer: 'dev', classifier: 'none', reviewer: 'none', deploy: deploy ?? 'branch' }
+  const req: RunRequest = { bug_id }
+  if (fixer && fixer !== 'nemotron') req.fixer = fixer
+  if (deploy) req.deploy = deploy
+  return req
 }
 
 export function Launcher({ mode, setMode, meta, bugs, onRun }: {
@@ -23,10 +26,13 @@ export function Launcher({ mode, setMode, meta, bugs, onRun }: {
   const [open, setOpen] = useState(false)
   const [bug, setBug] = useState('bug1')
   const [fixer, setFixer] = useState('default')
+  const [deploy, setDeploy] = useState<'default' | 'canary' | 'branch'>('default')
   const [busy, setBusy] = useState(false)
   const run = async (reqs: RunRequest[]) => { setBusy(true); try { await onRun(reqs) } finally { setBusy(false) } }
   const fixers = (meta?.fixers ?? []).filter((f) => f !== 'nemotron' && f !== 'reference')
   const chosen = fixer === 'default' ? undefined : fixer
+  const chosenDeploy = deploy === 'default' ? undefined : deploy
+  const effectiveDeploy = chosenDeploy ?? (mode === 'dev' ? 'branch' : 'canary')
 
   return (
     <>
@@ -45,7 +51,7 @@ export function Launcher({ mode, setMode, meta, bugs, onRun }: {
               className="popover"
               style={{ left: 0, right: 'auto' }}
               initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
-              onSubmit={async (e) => { e.preventDefault(); await run([buildRequest(mode, bug, chosen)]); setOpen(false) }}
+              onSubmit={async (e) => { e.preventDefault(); await run([buildRequest(mode, bug, chosen, chosenDeploy)]); setOpen(false) }}
             >
               <h4>Run one bug</h4>
               <label className="field" htmlFor="run-bug">Bug
@@ -59,6 +65,17 @@ export function Launcher({ mode, setMode, meta, bugs, onRun }: {
                   {fixers.map((f) => <option key={f} value={f}>{f}</option>)}
                 </select>
               </label>
+              <label className="field" htmlFor="run-deploy">Deploy
+                <select id="run-deploy" className="select" value={deploy} onChange={(e) => setDeploy(e.target.value as typeof deploy)}>
+                  <option value="default">{mode === 'dev' ? 'branch only (Dev default)' : 'canary to production (Live default)'}</option>
+                  <option value="canary">canary to production (about 15 s more)</option>
+                  <option value="branch">branch only, no production</option>
+                </select>
+              </label>
+              {fixer === 'rogue:slow_fix' && effectiveDeploy !== 'canary' && (
+                <p style={{ color: 'var(--sodium)' }}>Only the canary catches this fix: it passes every test. Set Deploy to canary.</p>
+              )}
+              {fixer === 'rogue:slow_fix' && bug !== 'bug1' && <p>slow_fix only works on bug1.</p>}
               {fixer === 'rogue:game_test' && mode === 'dev' && (
                 <p style={{ color: 'var(--sodium)' }}>Only the Nemotron reviewer catches this fix. In Dev mode the reviewer is off and it will ship. Switch to Live.</p>
               )}

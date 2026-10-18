@@ -1,5 +1,6 @@
 import { stationInfo } from '../lib/stations'
 import { isPostCheck, type RunState, type StationState } from '../state/reducer'
+import { CanaryPanel, canaryOf } from './CanaryPanel'
 import { StationEvidence } from './Evidence'
 
 function Block({ station, st }: { station: string; st: StationState }) {
@@ -42,7 +43,7 @@ export function Inspector({ run, station, onOpen }: { run: RunState | null; stat
   return (
     <section className="inspector" aria-live="polite">
       <div className="chips" style={{ justifyContent: 'space-between' }}>
-        <span className="eyebrow">{run.bug.id} · {run.fixer} · {pair ? 'post-checks, side by side' : info.kind === 'model' ? 'model station' : 'deterministic gate'}</span>
+        <span className="eyebrow">{run.bug.id} · {run.fixer} · {pair ? 'post-checks, side by side' : station === 'scope' ? 'rules, then model votes (escalate only)' : station === 'deploy' && run.deploy === 'canary' ? 'canary against production' : info.kind === 'model' ? 'model station' : 'deterministic gate'}</span>
         <button type="button" className="btn small ghost" onClick={() => onOpen(run.runId)}>Open run</button>
       </div>
       <h2 className="insp-title">{pair ? 'Oracle vs diff check' : info.label}</h2>
@@ -52,6 +53,8 @@ export function Inspector({ run, station, onOpen }: { run: RunState | null; stat
           <Block station="oracle" st={o ?? { status: 'idle' }} />
           <Block station="diff_inspection" st={d ?? { status: 'idle' }} />
         </div>
+      ) : station === 'deploy' && canaryOf(run) ? (
+        <div className="ev"><CanaryPanel canary={canaryOf(run)!} evidence={st.evidence} reason={st.reason} /></div>
       ) : (
         <Block station={station} st={st} />
       )}
