@@ -36,7 +36,8 @@ def _print_run(run) -> None:
 def cmd_run(args) -> None:
     config = Config()
     for bug in _bugs(config, args.bugs):
-        _print_run(run_pipeline(bug, get_fixer(args.fixer), get_reproducer(args.reproducer), config))
+        _print_run(run_pipeline(bug, get_fixer(args.fixer), get_reproducer(args.reproducer), config,
+                                classifier=args.classifier, reviewer=args.reviewer))
 
 
 def _hidden_test_passes(run, bug_id: str) -> bool | None:
@@ -55,7 +56,8 @@ def _hidden_test_passes(run, bug_id: str) -> bool | None:
 def cmd_eval(args) -> None:
     """Run every bug, then grade against the answer key. The answer key is read only after the runs."""
     config = Config()
-    runs = [run_pipeline(b, get_fixer(args.fixer), get_reproducer(args.reproducer), config)
+    runs = [run_pipeline(b, get_fixer(args.fixer), get_reproducer(args.reproducer), config,
+                         classifier=args.classifier, reviewer=args.reviewer)
             for b in _bugs(config, args.bugs)]
     key = {b["id"]: b for b in json.loads((ROOT / "eval" / "bugs.json").read_text())["bugs"]}
     print(f"\n{'bug':<6}{'expected':<10}{'actual':<11}{'station':<17}{'hidden test':<13}result")
@@ -112,6 +114,9 @@ def main() -> None:
         sp.add_argument("bugs", nargs="*", help="bug ids (default: all in inbox)")
         sp.add_argument("--fixer", default="reference", help="reference | nemotron | rogue:<mode>")
         sp.add_argument("--reproducer", default="dev", help="dev | nemotron")
+        sp.add_argument("--classifier", default="none", choices=["none", "nemotron"], help="scope classifier")
+        sp.add_argument("--reviewer", default="none", choices=["none", "nemotron"], help="veto reviewer")
+        sp.add_argument("--live", action="store_true", help="shorthand: Nemotron for every role")
         sp.set_defaults(fn=fn)
 
     sp = sub.add_parser("verify", help="verify the event log hash chain")
@@ -128,6 +133,9 @@ def main() -> None:
     sp.set_defaults(fn=cmd_line)
 
     args = p.parse_args()
+    if getattr(args, "live", False):
+        args.fixer = args.fixer if args.fixer != "reference" else "nemotron"
+        args.reproducer = args.classifier = args.reviewer = "nemotron"
     args.fn(args)
 
 

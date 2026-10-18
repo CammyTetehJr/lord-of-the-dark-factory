@@ -41,3 +41,16 @@ def test_all_trivial_seeded_reports_stay_in_scope():
     for i in range(1, 6):
         report = BugReport.from_markdown(next(Config().inbox_dir.glob(f"bug{i}_*.md")))
         assert check_scope(report).outcome == "pass", report.id
+
+
+def test_extract_json_handles_fenced_and_bare_replies():
+    from factory.llm import extract_json
+    assert extract_json('Thinking...\n```json\n{"trivial": true, "confidence": 0.9}\n```') == {"trivial": True, "confidence": 0.9}
+    assert extract_json('Answer: {"verdict": "veto", "concerns": ["a {b}"]} done')["verdict"] == "veto"
+    assert extract_json("no json here") is None
+
+
+def test_model_roles_disabled_means_rules_only():
+    from factory.stations.review import review
+    assert check_scope(bug("The total on page 2 is off by one cent."), classifier="none").evidence["classifier"] == "disabled"
+    assert review(bug("x" * 30), None, "", "", reviewer="none").outcome == "pass"

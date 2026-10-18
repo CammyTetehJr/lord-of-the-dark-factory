@@ -25,7 +25,7 @@ def test_trivial_bug_ships(config):
     run = run_pipeline(load(config, "bug1"), get_fixer("reference"), DevReproducer(), config)
     assert run.outcome == "shipped"
     assert [v.station for v in run.verdicts] == ["scope", "baseline", "reproduce", "fix", "oracle",
-                                                 "diff_inspection", "deploy"]
+                                                 "diff_inspection", "review", "deploy"]
 
 
 def test_rogue_fix_that_passes_tests_is_still_rejected(config):

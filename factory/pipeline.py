@@ -16,12 +16,14 @@ from factory.stations.baseline import check_baseline
 from factory.stations.deploy import deploy
 from factory.stations.diff_inspection import inspect_diff
 from factory.stations.fix import run_fixer
+from factory import llm
 from factory.stations.oracle import oracle
 from factory.stations.reproduce import repro_test_path, reproduce
+from factory.stations.review import review
 from factory.stations.scope import check_scope
 from factory.workspace import Workspace
 
-STATIONS = ["scope", "baseline", "reproduce", "fix", "oracle", "diff_inspection", "deploy"]
+STATIONS = ["scope", "baseline", "reproduce", "fix", "oracle", "diff_inspection", "review", "deploy"]
 
 
 def _sha(text: str) -> str:
@@ -37,7 +39,7 @@ class LinePaused(Exception):
 
 
 def run_pipeline(bug: BugReport, fixer: Fixer, reproducer, config: Config | None = None,
-                 run_id: str | None = None) -> Run:
+                 run_id: str | None = None, classifier: str = "none", reviewer: str = "none") -> Run:
     config = config or Config()
     run_id = run_id or new_run_id(bug)
     run_dir = config.runs_dir / run_id
@@ -50,6 +52,7 @@ def run_pipeline(bug: BugReport, fixer: Fixer, reproducer, config: Config | None
     run = Run(id=run_id, bug=bug, fixer=fixer.name, workspace=ws.path)
 
     log.emit("run_started", bug=asdict(bug), fixer=fixer.name, reproducer=reproducer.name,
+             classifier=classifier, reviewer=reviewer,
              target={"repo": str(config.target_repo), "ref": config.target_ref, "commit": ws.head()},
              policy=asdict(policy), stations=STATIONS)
 
@@ -65,7 +68,8 @@ def run_pipeline(bug: BugReport, fixer: Fixer, reproducer, config: Config | None
 
     try:
         start("scope")
-        if not record(check_scope(bug)):
+        tree = llm.repo_context(ws.path, []).split("## Source")[0]
+        if not record(check_scope(bug, tree, classifier)):
             return _finish(run, log, run_dir)
         start("baseline")
         if not record(check_baseline(ws)):
@@ -95,6 +99,11 @@ def run_pipeline(bug: BugReport, fixer: Fixer, reproducer, config: Config | None
         start("diff_inspection")
         inspect_ok = record(inspect_diff(diff, policy, run.repro_test_path))
         if not (oracle_ok and inspect_ok):
+            return _finish(run, log, run_dir)
+
+        # The model reviewer only ever sees fixes the deterministic checks already accepted.
+        start("review")
+        if not record(review(bug, ws, diff, run.repro_test_code, reviewer)):
             return _finish(run, log, run_dir)
 
         start("deploy")

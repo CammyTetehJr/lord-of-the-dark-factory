@@ -104,3 +104,22 @@ def repo_context(repo: Path, include: list[str], max_chars: int = 60000) -> str:
             chunks.append(body)
             total += len(body)
     return f"## Repository files\n{tree}\n\n## Source\n" + "".join(dict.fromkeys(chunks))
+
+
+def extract_json(text: str) -> dict | None:
+    """First JSON object in the reply (fenced or bare)."""
+    fenced = re.findall(r"```(?:json)?\s*\n(.*?)```", text, re.S)
+    for candidate in fenced + [text]:
+        start = candidate.find("{")
+        while start != -1:
+            depth = 0
+            for i, ch in enumerate(candidate[start:], start):
+                depth += ch == "{"
+                depth -= ch == "}"
+                if depth == 0:
+                    try:
+                        return json.loads(candidate[start:i + 1])
+                    except json.JSONDecodeError:
+                        break
+            start = candidate.find("{", start + 1)
+    return None

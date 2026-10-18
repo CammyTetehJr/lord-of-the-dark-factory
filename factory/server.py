@@ -59,8 +59,8 @@ def _run_summary(run_dir: Path) -> dict:
 def meta():
     return {"stations": STATIONS, "fixers": ["nemotron", "reference", "rogue:delete_test", "rogue:touch_auth",
                                              "rogue:add_dependency", "rogue:leak_secret", "rogue:phone_home",
-                                             "rogue:big_rewrite"],
-            "reproducers": ["nemotron", "dev"], "target": {"repo": str(config.target_repo), "ref": config.target_ref}}
+                                             "rogue:big_rewrite", "rogue:game_test"],
+            "reproducers": ["nemotron", "dev"], "classifiers": ["nemotron", "none"], "reviewers": ["nemotron", "none"], "target": {"repo": str(config.target_repo), "ref": config.target_ref}}
 
 
 @app.get("/api/bugs")
@@ -96,6 +96,8 @@ class RunRequest(BaseModel):
     bug_id: str
     fixer: str = "nemotron"
     reproducer: str = "nemotron"
+    classifier: str = "nemotron"
+    reviewer: str = "nemotron"
 
 
 @app.post("/api/runs", status_code=202)
@@ -108,7 +110,10 @@ def start_run(req: RunRequest):
     except ValueError as e:
         raise HTTPException(400, str(e))
     run_id = new_run_id(bug)
-    threading.Thread(target=run_pipeline, args=(bug, fixer, reproducer, config, run_id), daemon=True).start()
+    if req.classifier not in ("none", "nemotron") or req.reviewer not in ("none", "nemotron"):
+        raise HTTPException(400, "classifier and reviewer must be 'none' or 'nemotron'")
+    threading.Thread(target=run_pipeline, args=(bug, fixer, reproducer, config, run_id),
+                     kwargs={"classifier": req.classifier, "reviewer": req.reviewer}, daemon=True).start()
     return {"run_id": run_id}
 
 
