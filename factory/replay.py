@@ -94,7 +94,15 @@ def replay(run_id: str, config: Config | None = None) -> dict:
                 row("reproduce", "model", "recorded", "no qualifying test was produced")
             else:
                 ok, why, _ = judge_test(ws, test_path, test_code, policy, tag="replay")
-                row("reproduce", "deterministic", "pass" if ok else "escalate", why)
+                if recorded["reproduce"]["outcome"] == "closed":
+                    # the base-commit half is re-checkable; production has moved on since, so the rest is recorded
+                    fixed = recorded["reproduce"]["evidence"].get("production_check", {})
+                    rows.append({"station": "reproduce", "kind": "deterministic", "recorded": "closed",
+                                 "replayed": "pass" if ok else "escalate", "match": ok,
+                                 "note": f"test still fails on base commit ({why}); recorded as already fixed "
+                                         f"by {str(fixed.get('fixed_by', '?'))[:10]}"})
+                else:
+                    row("reproduce", "deterministic", "pass" if ok else "escalate", why)
         elif station == "fix":
             meta = (recorded["fix"]["evidence"].get("fixer_meta") or {}).get("attempts") or []
             row("fix", "model", "recorded", f"fixer {recorded['fix']['evidence'].get('fixer')}, "

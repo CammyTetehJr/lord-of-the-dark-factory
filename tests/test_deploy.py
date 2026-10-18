@@ -50,3 +50,14 @@ def test_honest_fix_is_promoted_and_slow_fix_rolled_back(config):
     assert good.outcome == "shipped"
     status = Prod(config).status()
     assert status["up"] and status["mainline"][0].split(" ", 1)[1].startswith("fix(bug1)")
+
+    # the same bug again: production already has the fix, so the run closes before any fixer runs
+    again = run_pipeline(load(config, "bug1"), get_fixer("reference"), DevReproducer(), config, deploy="canary")
+    assert again.outcome == "closed"
+    assert [v.station for v in again.verdicts] == ["scope", "baseline", "reproduce"]
+    assert again.verdicts[-1].evidence["production_check"]["fixed_by_subject"].startswith("fix(bug1)")
+
+    # a different bug is still broken in production and is not closed
+    other = run_pipeline(load(config, "bug4"), get_fixer("reference"), DevReproducer(), config, deploy="canary")
+    assert other.outcome == "shipped"
+    assert other.verdicts[2].evidence["production_check"] == "still broken in production"
