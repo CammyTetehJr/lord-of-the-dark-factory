@@ -1,0 +1,13 @@
+diff --git a/app/invoices.py b/app/invoices.py
+index f32f387..e28464e 100644
+--- a/app/invoices.py
++++ b/app/invoices.py
+@@ -76,7 +76,7 @@ def list_invoices(page: int = Query(1, ge=1), page_size: int = Query(10, ge=1, l
+         "page": page,
+         "page_size": page_size,
+         "has_more": has_more,
+-        "items": [dict(r) for r in rows],
++        "items": [dict(r) for r in rows[:page_size]],
+     }
+ 
+ 

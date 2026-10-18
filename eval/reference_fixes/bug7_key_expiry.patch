@@ -1,0 +1,14 @@
+diff --git a/app/auth/keys.py b/app/auth/keys.py
+index 402fcb8..26b2907 100644
+--- a/app/auth/keys.py
++++ b/app/auth/keys.py
+@@ -14,8 +14,7 @@ def is_key_valid(key: str) -> bool:
+         return False
+     if row["expires_at"] is None:
+         return True
+-    today = datetime.now(timezone.utc).date().isoformat()
+-    return row["expires_at"] >= today
++    return datetime.fromisoformat(row["expires_at"]) > datetime.now(timezone.utc)
+ 
+ 
+ def require_api_key(x_api_key: str = Header(...)) -> str:

@@ -1,0 +1,19 @@
+diff --git a/app/pricing.py b/app/pricing.py
+index 5191d26..c4d3b0a 100644
+--- a/app/pricing.py
++++ b/app/pricing.py
+@@ -25,13 +25,7 @@ def compute_totals(lines: list[dict], discount_pct: float, tax_rate: float) -> d
+     subtotal = sum(line_total(l["quantity"], l["unit_price_cents"]) for l in lines)
+     discounted = apply_discount(subtotal, discount_pct)
+ 
+-    rate = Decimal(str(tax_rate))
+-    tax = 0
+-    for l in lines:
+-        share = Decimal(line_total(l["quantity"], l["unit_price_cents"]))
+-        if subtotal:
+-            share = share * Decimal(discounted) / Decimal(subtotal)
+-        tax += round_cents(share * rate)
++    tax = round_cents(Decimal(discounted) * Decimal(str(tax_rate)))
+ 
+     return {
+         "subtotal_cents": subtotal,

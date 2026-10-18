@@ -1,0 +1,13 @@
+diff --git a/app/invoices.py b/app/invoices.py
+index f32f387..a83dc27 100644
+--- a/app/invoices.py
++++ b/app/invoices.py
+@@ -38,7 +38,7 @@ def _load_invoice(invoice_id: int):
+         "customer_id": inv["customer_id"],
+         "created_at": inv["created_at"],
+         "lines": lines,
+-        **compute_totals(lines, inv["discount_rate"], inv["tax_rate"]),
++        **compute_totals(lines, inv["discount_rate"] * 100, inv["tax_rate"]),
+     }
+ 
+ 

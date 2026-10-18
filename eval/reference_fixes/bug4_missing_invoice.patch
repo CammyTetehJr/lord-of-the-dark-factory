@@ -1,0 +1,13 @@
+diff --git a/app/invoices.py b/app/invoices.py
+index f32f387..baa1db8 100644
+--- a/app/invoices.py
++++ b/app/invoices.py
+@@ -27,6 +27,8 @@ class InvoiceIn(BaseModel):
+ def _load_invoice(invoice_id: int):
+     conn = get_conn()
+     inv = conn.execute("SELECT * FROM invoices WHERE id = ?", (invoice_id,)).fetchone()
++    if inv is None:
++        raise HTTPException(404, "invoice not found")
+     lines = conn.execute(
+         "SELECT description, quantity, unit_price_cents FROM line_items WHERE invoice_id = ? ORDER BY id",
+         (invoice_id,),

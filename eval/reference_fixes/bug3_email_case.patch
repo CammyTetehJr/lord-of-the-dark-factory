@@ -1,0 +1,13 @@
+diff --git a/app/customers.py b/app/customers.py
+index 9205bd1..257c054 100644
+--- a/app/customers.py
++++ b/app/customers.py
+@@ -15,7 +15,7 @@ class CustomerIn(BaseModel):
+ def find_by_email(email: str):
+     """Look up a customer by email. Email addresses are case-insensitive."""
+     return get_conn().execute(
+-        "SELECT id, name, email FROM customers WHERE email = ?", (email.strip(),)
++        "SELECT id, name, email FROM customers WHERE email = ?", (email.strip().lower(),)
+     ).fetchone()
+ 
+ 
