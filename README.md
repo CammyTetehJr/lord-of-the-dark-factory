@@ -4,6 +4,8 @@
 
 **▶ [Watch the 103-second demo on YouTube](https://youtu.be/Rz0O-oEIW44)**, recorded from the real system ([download the MP4](https://github.com/CammyTetehJr/lord-of-the-dark-factory/releases/download/demo-video/dark-factory-demo.mp4))
 
+**🎯 Target repo: [`dark-factory-target`](https://github.com/CammyTetehJr/dark-factory-target)**, the invoicing service this factory maintains, with 7 seeded bugs. Its [issues](https://github.com/CammyTetehJr/dark-factory-target/issues?q=is%3Aissue) show the factory at work: issues labelled `autofix` are picked up, fixed and closed with the factory's report, or handed to a human.
+
 Built at the AI Hackathon with Nebius & NVIDIA for the challenge *"a dark factory for bug resolution"*. The bug-fixing agent is the robot arm, and we never trust it. Everything around it decides whether a fix may ship: pre-checks, an oracle, diff inspection, a model that can only veto, a canary deploy that rolls itself back, and a signed audit trail. NVIDIA Nemotron on Nebius Token Factory plays four roles, but **models propose and gates decide**: no model can approve a change.
 
 ```
@@ -95,8 +97,9 @@ In five of these cases the tests alone would have shipped the change.
 ### Command line
 
 ```bash
+git clone https://github.com/CammyTetehJr/dark-factory-target ../dark-factory-target   # the seeded target, next to this repo
 python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
-.venv/bin/factory setup                     # test env for the target (expects ../dark-factory-target)
+.venv/bin/factory setup                     # test env for the target
 echo 'NEBIUS_API_KEY=…' > .env              # Nebius Token Factory key (only needed for --live)
 
 .venv/bin/factory eval                      # all 7 bugs with free stand-ins, graded against the answer key
