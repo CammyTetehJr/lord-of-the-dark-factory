@@ -91,6 +91,17 @@ def cmd_setup(args) -> None:
     print(f"target env ready: {config.target_python}")
 
 
+def cmd_serve(args) -> None:
+    import uvicorn
+    uvicorn.run("factory.server:app", host=args.host, port=args.port)
+
+
+def cmd_line(args) -> None:
+    from factory import line
+    s = line.set_paused(Config().runs_dir, args.action == "pause", "cli", args.reason)
+    print(f"line {'PAUSED' if s['paused'] else 'running'}")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="factory", description="Lord of the Dark Factory")
     sub = p.add_subparsers(required=True)
@@ -107,6 +118,14 @@ def main() -> None:
     sp.add_argument("--log")
     sp.set_defaults(fn=cmd_verify)
     sub.add_parser("setup", help="create the target test environment").set_defaults(fn=cmd_setup)
+    sp = sub.add_parser("serve", help="HTTP API for the UI")
+    sp.add_argument("--host", default="127.0.0.1")
+    sp.add_argument("--port", type=int, default=8100)
+    sp.set_defaults(fn=cmd_serve)
+    sp = sub.add_parser("line", help="pause or resume the line (andon cord)")
+    sp.add_argument("action", choices=["pause", "resume"])
+    sp.add_argument("--reason", default="")
+    sp.set_defaults(fn=cmd_line)
 
     args = p.parse_args()
     args.fn(args)

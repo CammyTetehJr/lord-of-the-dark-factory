@@ -27,7 +27,11 @@ python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
 .venv/bin/factory eval                        # all seeded bugs, graded against the answer key
 .venv/bin/factory run bug1                    # one bug, station by station
 .venv/bin/factory run bug1 --fixer rogue:delete_test   # a misbehaving fixer; the gates must catch it
+.venv/bin/factory run bug1 --reproducer nemotron --fixer nemotron   # the real thing
+.venv/bin/factory eval --reproducer nemotron --fixer nemotron       # all bugs, real thing, graded
 .venv/bin/factory verify                      # check the audit log has not been tampered with
+.venv/bin/factory serve                       # HTTP API for the UI (see docs/ui-handoff.md)
+.venv/bin/factory line pause|resume           # andon cord
 .venv/bin/pytest -q                           # the factory's own tests
 ```
 
@@ -43,14 +47,20 @@ Rogue modes: `delete_test`, `touch_auth`, `add_dependency`, `leak_secret`, `phon
 | `factory/reproducers.py` | Sources of reproducing tests: `dev` (hand-written stand-ins) |
 | `factory/events.py` | Hash-chained event log and verifier |
 | `eval/` | Answer key: bug reports, hidden tests, reference fixes. The factory never reads it during a run (except the `reference` dev fixer). |
+| `factory/fixers/nemotron.py` | The real fixer: Nemotron search/replace edits with test feedback, up to 3 attempts |
+| `factory/server.py` | HTTP API and live event stream for the UI |
+| `docs/ui-handoff.md` | **Start here if you are building the UI** |
 | `docs/events.md` | Event schema for the UI |
 
 ## Status
 
 - [x] Pipeline, oracle, diff inspection, event log, eval harness
-- [ ] Nemotron: scope classifier, reproducing-test generator, fixer, veto reviewer
+- [x] Nemotron reproducing-test generator (Super, 3 candidates in parallel)
+- [x] Nemotron fixer (Super, search/replace edits, test feedback loop)
+- [x] HTTP API, live event stream, andon cord
+- [ ] Nemotron scope classifier (Lightning) and veto reviewer (Ultra)
 - [ ] Signed audit entries and `replay`
 - [ ] Gated canary deploy with automatic rollback
-- [ ] UI
+- [ ] UI (in progress, see docs/ui-handoff.md)
 
 Team: Lord of the Dark Factory, AI Hackathon with Nebius & NVIDIA.

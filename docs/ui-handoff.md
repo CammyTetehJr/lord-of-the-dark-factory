@@ -1,0 +1,53 @@
+# UI handoff
+
+Everything the UI needs is served by `factory serve`. You can build the whole UI without a Nebius key.
+
+## Setup (once)
+
+```bash
+git clone https://github.com/CammyTetehJr/lord-of-the-dark-factory
+git clone https://github.com/CammyTetehJr/dark-factory-target      # must sit next to the factory repo
+cd lord-of-the-dark-factory
+python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
+.venv/bin/factory setup
+.venv/bin/factory serve           # http://127.0.0.1:8100  (interactive docs at /docs)
+```
+
+**Developing without a key:** start runs with `"fixer": "reference", "reproducer": "dev"`. They run the real pipeline in about 2 seconds and cost nothing. Use `"nemotron"` for both in the real demo (about 20 to 40 seconds per bug).
+
+## API
+
+| Method | Path | Use |
+|---|---|---|
+| GET | `/api/meta` | Station order (draw the line from this), available fixers and reproducers |
+| GET | `/api/bugs` | Bug inbox: `id`, `title`, `body` |
+| POST | `/api/runs` | Start a run: `{"bug_id": "bug1", "fixer": "nemotron", "reproducer": "nemotron"}` → `{"run_id"}` |
+| GET | `/api/runs` | Recent runs: `status` (`running`/`shipped`/`escalated`), per-station outcome, escalation reason |
+| GET | `/api/runs/{id}` | One run: `summary`, all `events`, final `result` with full evidence |
+| GET | `/api/runs/{id}/artifacts/fix.diff` | The diff (plain text) |
+| GET | `/api/runs/{id}/artifacts/repro_test.py` | The reproducing test (plain text) |
+| GET | `/api/events/stream?since=<seq>` | **Live feed** (Server-Sent Events). Use `new EventSource(url)` |
+| GET | `/api/escalations` | Human queue, newest first |
+| GET | `/api/line` | `{"paused": bool, "by", "reason", "ts"}` |
+| POST | `/api/line/pause` / `/api/line/resume` | Andon cord. Body: `{"by": "name", "reason": "..."}` |
+| GET | `/api/audit/verify` | `{"ok", "message", "events"}`: hash chain intact or the line where it broke |
+
+Event fields and per-station evidence are documented in [events.md](events.md).
+
+## Screens, in demo order
+
+1. **The line.** Seven stations left to right (`/api/meta`). Each bug moves through them live: running, pass, escalate. Clicking "Run all" posts one run per bug. This is the hero view; it must read from across a room.
+2. **Run detail.** The reason line for each station, the reproducing test, the diff, the `diff_inspection` checks as a checklist, and the Nemotron calls (model, seconds, tokens) from `reproduce.evidence.attempts[].generator` and `fix.evidence.fixer_meta.attempts[]`.
+3. **Escalation queue.** What went to a human, and why, in one sentence each.
+4. **Governance bar.** Always visible: the andon cord (pause/resume) and the audit status ("chain intact, 514 events" in green, or the broken line in red).
+
+## The demo beats the UI has to land
+
+| Beat | What the audience sees |
+|---|---|
+| Run bugs 1 to 5 with Nemotron | Each goes all the way to deploy. Nobody touches anything. |
+| Bug 6 (race condition) | Stops at scope: "non-deterministic behaviour". |
+| Bug 7 (expired API keys) | Stops at scope: "authentication / authorization". |
+| Bug 1 with `rogue:delete_test` | **Oracle passes, diff inspection rejects.** Show both side by side: the tests alone would have shipped it. |
+| Pause the line, start a run | It stops before the first station and lands in the queue. |
+| Audit verify | Green. (Edit a line in `runs/events.jsonl` live to show it turn red, then restore it.) |

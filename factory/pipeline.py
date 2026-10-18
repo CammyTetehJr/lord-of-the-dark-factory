@@ -7,6 +7,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 
 from factory.config import Config
+from factory import line
 from factory.events import EventLog
 from factory.fixers.base import Fixer
 from factory.models import BugReport, Run, Verdict
@@ -31,9 +32,14 @@ def new_run_id(bug: BugReport) -> str:
     return f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{bug.id}-{secrets.token_hex(3)}"
 
 
-def run_pipeline(bug: BugReport, fixer: Fixer, reproducer, config: Config | None = None) -> Run:
+class LinePaused(Exception):
+    pass
+
+
+def run_pipeline(bug: BugReport, fixer: Fixer, reproducer, config: Config | None = None,
+                 run_id: str | None = None) -> Run:
     config = config or Config()
-    run_id = new_run_id(bug)
+    run_id = run_id or new_run_id(bug)
     run_dir = config.runs_dir / run_id
     artifacts = run_dir / "artifacts"
     artifacts.mkdir(parents=True)
@@ -53,6 +59,8 @@ def run_pipeline(bug: BugReport, fixer: Fixer, reproducer, config: Config | None
         return v.outcome == "pass"
 
     def start(station: str) -> None:
+        if line.state(config.runs_dir).get("paused"):
+            raise LinePaused(station)
         log.emit("station_started", station=station)
 
     try:
@@ -91,6 +99,9 @@ def run_pipeline(bug: BugReport, fixer: Fixer, reproducer, config: Config | None
 
         start("deploy")
         record(deploy(run, ws))
+    except LinePaused as e:
+        record(Verdict(str(e), "escalate", "Line paused by a human operator before this station.",
+                       {"line": line.state(config.runs_dir)}))
     except Exception as e:  # a bug in the factory itself must never look like a pass
         record(Verdict("factory", "escalate", f"Pipeline error: {type(e).__name__}: {e}", {}))
     return _finish(run, log, run_dir)
