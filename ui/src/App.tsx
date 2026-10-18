@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { API_URL } from './api/source'
 import type { RunRequest } from './api/types'
 import { Andon } from './components/Andon'
@@ -50,6 +50,7 @@ export default function App() {
   const [picked, setPicked] = useState<Selection | null>(null)
   const [openRun, setOpenRun] = useState<string | null>(null)
   const [launchError, setLaunchError] = useState<string | null>(null)
+  const [launchNote, setLaunchNote] = useState<string | null>(null)
 
   const stations = f.meta?.stations ?? DEFAULT_STATIONS
   const lanes = useMemo(
@@ -65,12 +66,27 @@ export default function App() {
 
   const onRun = useCallback(async (reqs: RunRequest[]) => {
     setLaunchError(null)
+    setLaunchNote(null)
+    let started = 0
+    let waiting = 0
     try {
-      for (const r of reqs) await source.startRun(r)
+      for (const r of reqs) {
+        const res = await source.startRun(r)
+        started++
+        if ((res.queued_behind ?? 0) > 0) waiting++
+      }
     } catch (e) {
-      setLaunchError((e as Error).message)
+      // 429 carries the server's plain-language reason (line busy, hourly cap)
+      setLaunchError(started ? `${started} of ${reqs.length} started. ${(e as Error).message}` : (e as Error).message)
     }
+    // runs beyond the active limit wait their turn; they appear on the board when they start
+    if (waiting) setLaunchNote(`${waiting} run${waiting > 1 ? 's are' : ' is'} waiting their turn and will appear on the line when ${waiting > 1 ? 'they start' : 'it starts'}.`)
   }, [])
+  useEffect(() => {
+    if (!launchNote) return
+    const t = setTimeout(() => setLaunchNote(null), 12_000)
+    return () => clearTimeout(t)
+  }, [launchNote])
 
   const drawerRun = openRun ? f.state.runs[openRun] : null
   const line = f.line
@@ -87,7 +103,7 @@ export default function App() {
         </span>
         {f.stream !== 'open' && <span className="pill warn"><i />{f.stream === 'connecting' ? 'connecting…' : 'reconnecting…'}</span>}
         <span className="spacer" />
-        <ProdControl prod={f.prod} error={f.prodError} operator={operator} onStart={f.prodStart} onRollback={f.prodRollback} />
+        <ProdControl prod={f.prod} error={f.prodError} operator={operator} onStart={f.prodStart} onRollback={f.prodRollback} onReset={f.prodReset} />
         <Andon
           line={line}
           operator={operator}
@@ -110,13 +126,20 @@ export default function App() {
             <span>Runs in progress finish their current station, then go to the queue. New runs stop before scope.</span>
           </div>
         )}
-        {f.error && source.kind === 'http' && (
+        {f.error && source.kind === 'http' && f.errorStatus === 401 && (
           <div className="banner error" role="alert">
-            <b>Can't reach the factory at {API_URL}.</b>
+            <b>This link needs an access code.</b>
+            <span>Open the full link you were given, including <code>?code=…</code>. The code is remembered for a day after that.</span>
+          </div>
+        )}
+        {f.error && source.kind === 'http' && f.errorStatus !== 401 && (
+          <div className="banner error" role="alert">
+            <b>Can't reach the factory{API_URL ? ` at ${API_URL}` : ''}.</b>
             <span>Start it with <code>.venv/bin/factory serve</code>, or open <a href="?source=mock" style={{ color: 'inherit' }}>?source=mock</a> to use simulated data.</span>
           </div>
         )}
-        {launchError && <div className="banner error" role="alert"><b>Could not start the run.</b><span>{launchError}</span></div>}
+        {launchError && <div className="banner error" role="alert"><b>Could not start every run.</b><span>{launchError}</span></div>}
+        {launchNote && <div className="banner info" role="status">{launchNote}</div>}
       </div>
 
       <main className="main">

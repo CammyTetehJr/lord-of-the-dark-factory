@@ -5,7 +5,8 @@ export interface FactorySource {
   kind: 'http' | 'mock'
   meta(): Promise<Meta>
   bugs(): Promise<Bug[]>
-  startRun(req: RunRequest): Promise<{ run_id: string }>
+  /** queued_behind: how many runs are ahead of this one when the line is busy */
+  startRun(req: RunRequest): Promise<{ run_id: string; queued_behind?: number }>
   /** Calls onEvent for every event with seq > since, then live. Returns an unsubscribe function. */
   subscribe(since: number, onEvent: (e: FactoryEvent) => void, onStatus?: (s: StreamStatus) => void): () => void
   line(): Promise<LineState>
@@ -21,11 +22,26 @@ export interface FactorySource {
   prodStart(): Promise<{ url: string }>
   /** Human kill switch: revert the last promoted fix and restart stable without it */
   prodRollback(by: string): Promise<RollbackResult>
+  /** Restart production from the original code, so every seeded bug is back */
+  prodReset(by: string): Promise<RollbackResult>
 }
 
 export type StreamStatus = 'connecting' | 'open' | 'retrying'
 
-export const API_URL: string = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8100'
+// Dev (vite on its own port) talks to factory serve on :8100. A production build is served by
+// factory serve itself (one link for judges), so it talks to its own origin, and the browser sends
+// the access-code cookie by default. Don't force credentials: the server's CORS allows any origin
+// without credentials, and credentialed cross-origin requests would then fail in dev.
+export const API_URL: string = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? 'http://127.0.0.1:8100' : '')
+
+/** An API error with the server's own plain-language reason (FastAPI's `detail`). */
+export class ApiError extends Error {
+  readonly status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
 
 async function json<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(API_URL + path, {
@@ -33,8 +49,10 @@ async function json<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   })
   if (!res.ok) {
-    const detail = await res.text().catch(() => '')
-    throw new Error(`${init?.method ?? 'GET'} ${path} failed (${res.status})${detail ? `: ${detail}` : ''}`)
+    const text = await res.text().catch(() => '')
+    let detail = text
+    try { detail = (JSON.parse(text) as { detail?: string }).detail ?? text } catch { /* not JSON */ }
+    throw new ApiError(res.status, detail || `${init?.method ?? 'GET'} ${path} failed (${res.status})`)
   }
   return res.json() as Promise<T>
 }
@@ -50,6 +68,7 @@ export const httpSource: FactorySource = {
   verify: () => json<AuditResult>('/api/audit/verify'),
   prod: () => json<ProdStatus>('/api/prod'),
   prodStart: () => json('/api/prod/start', { method: 'POST' }),
+  prodReset: (by) => json<RollbackResult>('/api/prod/reset', { method: 'POST', body: JSON.stringify({ by, reason: '' }) }),
   prodRollback: (by) => json<RollbackResult>('/api/prod/rollback', { method: 'POST', body: JSON.stringify({ by, reason: '' }) }),
   replay: (runId) => json<ReplayResult>(`/api/runs/${encodeURIComponent(runId)}/replay`, { method: 'POST' }),
   async pubkey() {

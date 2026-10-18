@@ -443,7 +443,7 @@ function createMock(): FactorySource & { tamper(seq?: number): void; restore(): 
       if (!bug) throw new Error(`no bug report ${req.bug_id}`)
       const run_id = `${stamp()}-${bug.id}-${Math.random().toString(16).slice(2, 8)}`
       void run(bug, { fixer: 'nemotron', reproducer: 'nemotron', classifier: 'nemotron', reviewer: 'nemotron', deploy: 'canary', ...req }, run_id)
-      return { run_id }
+      return { run_id, queued_behind: 0 }
     },
     subscribe(since, onEvent, onStatus) {
       onStatus?.('open')
@@ -504,6 +504,16 @@ function createMock(): FactorySource & { tamper(seq?: number): void; restore(): 
     async prodStart() {
       prod.up = true
       return { url: prod.url ?? '' }
+    },
+    async prodReset(by) {
+      prod.commits = [BASE]
+      refreshMainline()
+      for (const h of prod.history) if (h.event === 'promoted') h.reverted = true
+      prod.stable = { name: 'stable', commit: BASE.sha, port: 55315, pid: 58754 }
+      prod.url = 'http://127.0.0.1:55315'
+      prod.history.push({ ts: now(), event: 'reset', by, commit: BASE.sha })
+      await sleep(800 / SPEED)
+      return { ok: true, message: 'production restarted from the original code' }
     },
     async prodRollback(by) {
       const last = [...prod.commits].reverse().find((c) => c.run_id && !c.reverted)

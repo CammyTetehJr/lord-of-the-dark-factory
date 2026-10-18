@@ -367,3 +367,5 @@ button.pill { background: transparent; cursor: pointer; }
   .step-meta { grid-column: 3; justify-items: start; grid-auto-flow: column; gap: 8px; }
   .step-inner { padding-left: 14px; }
 }
+
+.banner.info { color: var(--ink); background: color-mix(in srgb, var(--sodium) 8%, var(--panel)); border-color: color-mix(in srgb, var(--sodium) 30%, transparent); }

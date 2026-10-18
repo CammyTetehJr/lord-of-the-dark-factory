@@ -7,7 +7,7 @@ import { expect, test, type Page } from '@playwright/test'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { auditPill, cell, FACTORY_URL, finished, holdAndon, inspect, inspector, lane, openBoard, runAll, runOne, setMode } from '../helpers.ts'
+import { auditPill, cell, FACTORY_URL, finished, holdAndon, inspect, inspector, lane, runAll, runOne, setMode } from '../helpers.ts'
 
 const RUNS_DIR = process.env.E2E_RUNS_DIR ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../runs')
 const BUG1_TITLE = 'Invoice list shows the same invoice on two pages'
@@ -33,8 +33,19 @@ async function productionWithoutBug1Fix() {
   throw new Error('could not remove the bug1 fix from production')
 }
 
+/** Wait until the page has replayed the server's whole log; only then does "Clear board" clear it. */
+async function caughtUp(page: Page) {
+  const { events } = await api<{ events: number }>('/api/audit/verify')
+  if (events) await expect(page.getByLabel('Event stream').locator('.rail-h .mono')).toHaveText(`seq ${events}`, { timeout: 60_000 })
+}
+
 async function devBoard(page: Page) {
-  await openBoard(page)
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'The line' })).toBeVisible()
+  await caughtUp(page)
+  const clear = page.getByRole('button', { name: 'Clear board' })
+  if (await clear.isVisible()) await clear.click()
+  await expect(page.locator('.lane')).toHaveCount(0)
   await expect(page.locator('.brand')).toContainText('CONTROL ROOM')
   await setMode(page, 'Dev')
 }
@@ -56,6 +67,10 @@ test('meta lists the eight stations the board draws', async ({ page }) => {
   const meta = await api<{ stations: string[] }>('/api/meta')
   expect(meta.stations).toEqual(['scope', 'baseline', 'reproduce', 'fix', 'oracle', 'diff_inspection', 'review', 'deploy'])
   await devBoard(page)
+  await expect(page.locator('.empty-board')).toContainText(`${meta.stations.length} stations`)
+  // bug7 stops at scope in a second; with a lane on the board the column headers are drawn
+  await runOne(page, { bug: 'bug7' })
+  await finished(lane(page, 'bug7'))
   await expect(page.locator('.colh')).toHaveCount(meta.stations.length + 2)
 })
 
