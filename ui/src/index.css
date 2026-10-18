@@ -49,6 +49,8 @@ code, pre, .mono { font-family: var(--mono); }
 .gbar > * { max-width: 100%; }
 .gbar { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 20px; background: var(--panel-2); border-bottom: 1px solid var(--rule); }
 .brand { font: 800 24px/1 var(--display); letter-spacing: 0.04em; text-transform: uppercase; margin-right: 6px; white-space: nowrap; }
+a.brand { color: inherit; text-decoration: none; }
+a.brand:hover { color: #fff; }
 .brand small { font: 500 11px/1 var(--mono); letter-spacing: 0.08em; color: var(--faint); margin-left: 8px; }
 .spacer { flex: 1; }
 .pill { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--rule); font: 500 12px/1 var(--mono); letter-spacing: 0.06em; white-space: nowrap; }
