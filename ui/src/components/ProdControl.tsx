@@ -7,6 +7,7 @@ const EVENT_LABEL: Record<string, string> = {
   promoted: 'fix promoted',
   rolled_back: 'canary rolled back',
   manual_rollback: 'rolled back by a human',
+  reset: 'reset to the original code',
 }
 
 /** The most recent promoted fix that has not been reverted: what the kill switch would undo. */
@@ -20,13 +21,16 @@ const time = (ts: string) => ts.slice(11, 19)
  * Production status and the human kill switch. One click opens the confirmation, which names
  * exactly which fix will be reverted; production restarts without it.
  */
-export function ProdControl({ prod, error, operator, onStart, onRollback }: {
+export function ProdControl({ prod, error, operator, onStart, onRollback, onReset }: {
   prod: ProdStatus | null
   error: string | null
   operator: string
   onStart: () => Promise<void>
   onRollback: (by: string) => Promise<{ ok: boolean; message: string }>
+  onReset: (by: string) => Promise<{ ok: boolean; message: string }>
 }) {
+  const [confirmReset, setConfirmReset] = useState(false)
+  const [resetResult, setResetResult] = useState<string | null>(null)
   const [open, setOpen] = useState<'history' | 'confirm' | null>(null)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
@@ -124,7 +128,29 @@ export function ProdControl({ prod, error, operator, onStart, onRollback }: {
                 </li>
               ))}
             </ul>
-            <div className="row"><button type="button" className="btn ghost small" onClick={() => setOpen(null)}>Close</button></div>
+            {resetResult && <p style={{ color: 'var(--pass-ink)' }}>{resetResult}</p>}
+            {confirmReset ? (
+              <div className="ev" style={{ padding: 10, display: 'grid', gap: 8 }}>
+                <p style={{ margin: 0 }}>Restart production from the original code? Every fix promoted so far is removed, so all seeded bugs are back.</p>
+                <div className="row">
+                  <button type="button" className="btn ghost small" disabled={busy} onClick={() => setConfirmReset(false)}>Cancel</button>
+                  <button type="button" className="btn danger small" disabled={busy} onClick={async () => {
+                    setBusy(true)
+                    try {
+                      const r = await onReset(operator || 'operator')
+                      setResetResult(r.ok ? 'Production restarted from the original code.' : `Not reset: ${r.message}`)
+                    } catch (e) {
+                      setResetResult(`Not reset: ${(e as Error).message}`)
+                    } finally { setBusy(false); setConfirmReset(false) }
+                  }}>{busy ? 'Resetting…' : 'Reset production'}</button>
+                </div>
+              </div>
+            ) : (
+              <div className="row">
+                <button type="button" className="btn ghost small" onClick={() => { setResetResult(null); setConfirmReset(true) }}>Reset production…</button>
+                <button type="button" className="btn ghost small" onClick={() => setOpen(null)}>Close</button>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

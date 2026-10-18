@@ -69,6 +69,20 @@ describe('reducer', () => {
     expect(c.reason).toBe('Canary breached SLO at 10% traffic.')
   })
 
+  it('closes a run that production already fixed, without an escalation', () => {
+    const s = fold([
+      started('r7'), st('r7', 'scope'), fin('r7', 'scope', 'pass'), st('r7', 'reproduce'),
+      { ...base('r7'), type: 'station_finished', station: 'reproduce', outcome: 'closed', reason: 'Already fixed in production by 744ff3e.', evidence: {} },
+      { ...base('r7'), type: 'run_finished', outcome: 'closed' },
+    ])
+    expect(s.runs.r7.status).toBe('closed')
+    expect(s.runs.r7.byStation.reproduce.status).toBe('closed')
+    expect(s.runs.r7.closed?.station).toBe('reproduce')
+    expect(s.runs.r7.escalation).toBeUndefined()
+    expect(s.runs.r7.byStation.fix.status).toBe('skipped')
+    expect(escalatedRuns(s)).toHaveLength(0)
+  })
+
   it('ignores events it has already seen (SSE reconnect)', () => {
     const e = started('r5')
     const once = apply(emptyState, e)

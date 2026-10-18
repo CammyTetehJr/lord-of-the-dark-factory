@@ -37,7 +37,7 @@ export function cell(l: Locator, station: string): Locator {
 }
 
 export async function finished(l: Locator, timeout = 90_000) {
-  await expect(l).toHaveAttribute('data-outcome', /^(shipped|escalated|stopped|crashed)$/, { timeout })
+  await expect(l).toHaveAttribute('data-outcome', /^(shipped|escalated|closed|stopped|crashed)$/, { timeout })
 }
 
 export async function inspect(l: Locator, station: string) {

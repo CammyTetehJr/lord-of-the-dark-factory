@@ -383,6 +383,7 @@ function createMock(): FactorySource & { tamper(seq?: number): void; restore(): 
     const steps = plan(bug.id, fixer, reproducer, classifier, reviewer)
     await emit(run_id, 'run_started', { bug, fixer, reproducer, classifier, reviewer, deploy, target: { repo: '../dark-factory-target', ref: 'main', commit: '1feb6cf' }, policy: {}, stations: STATIONS })
     let escalation: { station: string; reason: string } | null = null
+    let closed = false
     for (const step of steps) {
       if (line.paused) {
         const reason = 'Line paused by a human operator before this station.'
@@ -403,11 +404,24 @@ function createMock(): FactorySource & { tamper(seq?: number): void; restore(): 
       } else {
         await sleep(step.ms)
       }
+      // mirrors production_check.py: canary runs check the qualified test against production first
+      if (step.station === 'reproduce' && step.outcome === 'pass' && deploy === 'canary') {
+        const fixedBy = prod.history.find((h) => h.event === 'promoted' && !h.reverted && h.title === bug.title)
+        if (fixedBy?.commit) {
+          const subject = prod.commits.find((c) => c.sha === fixedBy.commit)?.msg ?? bug.title
+          Object.assign(step, { outcome: 'closed' as Outcome,
+            reason: `Already fixed in production by ${fixedBy.commit.slice(0, 10)} (${subject}). The reproducing test fails on the base commit but passes on production. Nothing to do.`,
+            evidence: { ...step.evidence, production_check: { production_head: prod.stable?.commit, fixed_by: fixedBy.commit, fixed_by_subject: subject } } })
+        } else {
+          step.evidence = { ...step.evidence, production_check: 'still broken in production' }
+        }
+      }
       await emit(run_id, 'station_finished', { station: step.station, outcome: step.outcome, reason: step.reason, evidence: step.evidence })
+      if (step.outcome === 'closed') { closed = true; break }
       if (step.outcome === 'escalate' && !escalation) escalation = { station: step.station, reason: step.reason }
     }
     if (escalation) await emit(run_id, 'escalated', escalation)
-    await emit(run_id, 'run_finished', { outcome: escalation ? 'escalated' : 'shipped' })
+    await emit(run_id, 'run_finished', { outcome: escalation ? 'escalated' : closed ? 'closed' : 'shipped' })
   }
 
   const stamp = () => new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z'
@@ -429,7 +443,7 @@ function createMock(): FactorySource & { tamper(seq?: number): void; restore(): 
       if (!bug) throw new Error(`no bug report ${req.bug_id}`)
       const run_id = `${stamp()}-${bug.id}-${Math.random().toString(16).slice(2, 8)}`
       void run(bug, { fixer: 'nemotron', reproducer: 'nemotron', classifier: 'nemotron', reviewer: 'nemotron', deploy: 'canary', ...req }, run_id)
-      return { run_id }
+      return { run_id, queued_behind: 0 }
     },
     subscribe(since, onEvent, onStatus) {
       onStatus?.('open')
@@ -490,6 +504,16 @@ function createMock(): FactorySource & { tamper(seq?: number): void; restore(): 
     async prodStart() {
       prod.up = true
       return { url: prod.url ?? '' }
+    },
+    async prodReset(by) {
+      prod.commits = [BASE]
+      refreshMainline()
+      for (const h of prod.history) if (h.event === 'promoted') h.reverted = true
+      prod.stable = { name: 'stable', commit: BASE.sha, port: 55315, pid: 58754 }
+      prod.url = 'http://127.0.0.1:55315'
+      prod.history.push({ ts: now(), event: 'reset', by, commit: BASE.sha })
+      await sleep(800 / SPEED)
+      return { ok: true, message: 'production restarted from the original code' }
     },
     async prodRollback(by) {
       const last = [...prod.commits].reverse().find((c) => c.run_id && !c.reverted)

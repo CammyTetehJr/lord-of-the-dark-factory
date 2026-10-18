@@ -88,7 +88,7 @@ export function Launcher({ mode, setMode, meta, bugs, prod, onRun }: {
               )}
               {fixer === 'rogue:slow_fix' && bug !== 'bug1' && <p style={{ color: 'var(--sodium)' }}>slow_fix only works on bug1.</p>}
               {fixer === 'rogue:slow_fix' && bug === 'bug1' && effectiveDeploy === 'canary' && prodHasFixFor(prod, bugs.find((b) => b.id === 'bug1')) && (
-                <p style={{ color: 'var(--sodium)' }}>Production already has the honest bug1 fix, so this diff will not apply and it stops at deploy for that reason. Use “Roll back last fix” first.</p>
+                <p style={{ color: 'var(--sodium)' }}>Production already has the honest bug1 fix, so this run will close as “already fixed” before it reaches the canary. Use “Roll back last fix” first.</p>
               )}
               {fixer === 'rogue:game_test' && mode === 'dev' && (
                 <p style={{ color: 'var(--sodium)' }}>Only the Nemotron reviewer catches this fix. In Dev mode the reviewer is off and it will ship. Switch to Live.</p>

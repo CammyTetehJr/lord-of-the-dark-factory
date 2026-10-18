@@ -128,3 +128,48 @@ test('audit pill turns red when the chain breaks and green when restored', async
   await page.evaluate(() => (globalThis as unknown as { __factoryMock: { restore(): void } }).__factoryMock.restore())
   await expect(auditPill(page)).toContainText('chain intact', { timeout: 10_000 })
 })
+
+test('run drawer names the agent, model and power at every step', async ({ page }) => {
+  await page.goto('/?source=mock&speed=20')
+  await setMode(page, 'Live')
+  await runOne(page, { bug: 'bug3', fixer: 'rogue:game_test', deploy: 'branch' })
+  const l = lane(page, 'bug3', 'rogue:game_test')
+  await finished(l)
+  await l.locator('.outcome').click()
+  const drawer = page.locator('.drawer')
+  // crew: every model agent with its model
+  await expect(drawer.locator('.crew-card', { hasText: 'Scope classifier' })).toContainText('Nemotron-3_5-Lightning')
+  await expect(drawer.locator('.crew-card', { hasText: 'Test writer' })).toContainText('nemotron-3-super-120b-a12b')
+  await expect(drawer.locator('.crew-card', { hasText: 'Fixer' })).toContainText('adversarial')
+  await expect(drawer.locator('.crew-card', { hasText: 'Reviewer' })).toContainText('Nemotron-3-Ultra-550b-a55b')
+  // steps: numbered, one per station, each header naming who works there
+  await expect(drawer.locator('.step')).toHaveCount(8)
+  await expect(drawer.locator('.step[data-station="scope"] .step-h')).toContainText('Scope classifier')
+  await expect(drawer.locator('.step[data-station="diff_inspection"] .step-h')).toContainText('Diff inspector')
+  // the escalated step opens by default and shows the reviewer's card and its call, once
+  const review = drawer.locator('.step[data-station="review"]')
+  await expect(review.locator('.step-h')).toHaveAttribute('aria-expanded', 'true')
+  await expect(review.locator('.agent-card')).toContainText('can only veto')
+  await expect(review.locator('.agent-card')).toContainText('veto')
+  await expect(review.locator('.call')).toHaveCount(1)
+  // expanding a passed step shows its agents
+  await drawer.locator('.step[data-station="oracle"] .step-h').click()
+  await expect(drawer.locator('.step[data-station="oracle"] .agent-card')).toContainText('decides')
+})
+
+test('a bug already fixed in production closes without a human', async ({ page }) => {
+  await setMode(page, 'Dev')
+  await runOne(page, { bug: 'bug1', deploy: 'canary' })
+  await finished(lane(page, 'bug1'))
+  await expect(lane(page, 'bug1')).toHaveAttribute('data-outcome', 'shipped')
+  await runOne(page, { bug: 'bug1', deploy: 'canary' })
+  await expect(page.locator('.lane[data-bug="bug1"]')).toHaveCount(2)
+  const again = lane(page, 'bug1')
+  await finished(again)
+  await expect(again).toHaveAttribute('data-outcome', 'closed')
+  await expect(cell(again, 'reproduce')).toHaveAttribute('data-status', 'closed')
+  await expect(cell(again, 'fix')).toHaveAttribute('data-status', 'skipped')
+  await expect(page.locator('.qi')).toHaveCount(0)
+  await again.locator('.outcome').click()
+  await expect(page.locator('.drawer .step[data-station="reproduce"] .agent-card', { hasText: 'Production check' })).toContainText('already fixed by')
+})

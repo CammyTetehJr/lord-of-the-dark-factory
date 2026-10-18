@@ -4,9 +4,9 @@ import type { FactorySource } from '../api/source'
 import type { FactoryEvent, ReplayResult } from '../api/types'
 import { shortModel, stationInfo } from '../lib/stations'
 import type { RunState } from '../state/reducer'
-import { isOff, Lamp } from './Board'
-import { CanaryPanel, canaryOf } from './CanaryPanel'
-import { DiffView, modelCalls, StationEvidence } from './Evidence'
+import { useNow } from '../hooks/useFactory'
+import { Crew, Steps } from './Agents'
+import { DiffView, modelCalls } from './Evidence'
 
 function Replay({ source, run }: { source: FactorySource; run: RunState }) {
   const [state, setState] = useState<{ busy: boolean; result?: ReplayResult; error?: string }>({ busy: false })
@@ -76,6 +76,7 @@ export function RunDrawer({ run, events, source, onClose }: { run: RunState; eve
   const testCode: string | undefined = run.byStation.reproduce?.evidence?.test_code
   const diff: string | undefined = run.byStation.fix?.evidence?.diff
   const calls = modelCalls(run.byStation)
+  const now = useNow(run.status === 'running', 250)
   const esc = run.escalation
 
   return (
@@ -92,15 +93,15 @@ export function RunDrawer({ run, events, source, onClose }: { run: RunState; eve
           </div>
           <h2 className="insp-title" style={{ margin: 0 }}>{run.bug.id} · {run.bug.title}</h2>
           <div className="row">
-            <span className={`tag ${run.status === 'shipped' ? 'pass' : run.status === 'running' ? 'running' : esc?.held ? 'held' : 'escalate'}`}>
-              {esc?.held ? 'stopped by andon' : run.status}
+            <span className={`tag ${run.status === 'shipped' ? 'pass' : run.status === 'running' ? 'running' : run.status === 'closed' ? 'closed' : esc?.held ? 'held' : 'escalate'}`}>
+              {esc?.held ? 'stopped by andon' : run.status === 'closed' ? 'closed · already fixed' : run.status}
             </span>
             {[['fixer', run.fixer], ['reproducer', run.reproducer], ['classifier', started?.type === 'run_started' ? started.classifier : undefined], ['reviewer', started?.type === 'run_started' ? started.reviewer : undefined]]
               .filter(([, v]) => v)
               .map(([k, v]) => <span key={k} className={`chip ${v === 'nemotron' ? 'model' : String(v).startsWith('rogue') ? 'rogue' : ''}`}>{k}: {v}</span>)}
             {started?.type === 'run_started' && started.target && <span className="chip">commit {started.target.commit.slice(0, 10)}</span>}
           </div>
-          {(esc || run.crash) && <p className={`reason ${esc?.held ? 'held' : 'escalate'}`} style={{ margin: 0 }}>{run.crash ?? esc?.reason}</p>}
+          {(esc || run.crash || run.closed) && <p className={`reason ${run.closed ? 'closed' : esc?.held ? 'held' : 'escalate'}`} style={{ margin: 0 }}>{run.crash ?? esc?.reason ?? run.closed?.reason}</p>}
         </header>
 
         <div className="drawer-body">
@@ -109,29 +110,8 @@ export function RunDrawer({ run, events, source, onClose }: { run: RunState; eve
             <p style={{ maxWidth: '70ch' }}>{run.bug.body}</p>
           </details>
 
-          <section>
-            <h3>Stations</h3>
-            {run.stations.map((s) => {
-              const st = run.byStation[s] ?? { status: 'idle' }
-              const info = stationInfo(s)
-              return (
-                <div className="stn" key={s}>
-                  <div className={`cell ${info.kind === 'model' ? 'model' : ''}`} data-status={isOff(st) ? 'off' : st.status}><Lamp /></div>
-                  <div style={{ minWidth: 0 }}>
-                    <div className="chips" style={{ alignItems: 'baseline' }}>
-                      <b style={{ font: '700 20px/1 var(--display)', textTransform: 'uppercase', letterSpacing: '.03em' }}>{info.label}</b>
-                      <span className="note">{info.kind === 'model' ? 'model' : 'deterministic gate'}</span>
-                    </div>
-                    {st.reason && <p className={`reason ${st.status}`} style={{ fontSize: 15, margin: '6px 0 10px' }}>{st.reason}</p>}
-                    {s === 'deploy' && canaryOf(run)
-                      ? <CanaryPanel canary={canaryOf(run)!} evidence={st.evidence} reason={st.reason} showTable />
-                      : <StationEvidence station={s} st={st} compact />}
-
-                  </div>
-                </div>
-              )
-            })}
-          </section>
+          <Crew run={run} />
+          <Steps key={run.runId} run={run} now={now} />
 
           {testCode && (
             <section>
@@ -146,8 +126,8 @@ export function RunDrawer({ run, events, source, onClose }: { run: RunState; eve
             </section>
           )}
 
-          <section>
-            <h3>Nemotron calls</h3>
+          <details>
+            <summary>All model calls ({calls.length})</summary>
             {calls.length === 0 ? (
               <p className="note">No model calls in this run.</p>
             ) : (
@@ -169,7 +149,7 @@ export function RunDrawer({ run, events, source, onClose }: { run: RunState; eve
                 </table>
               </div>
             )}
-          </section>
+          </details>
 
           <Replay source={source} run={run} />
 

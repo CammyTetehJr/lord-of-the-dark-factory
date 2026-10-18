@@ -1,5 +1,7 @@
 import { stationInfo } from '../lib/stations'
 import { isPostCheck, type RunState, type StationState } from '../state/reducer'
+import { agentsFor } from '../lib/agents'
+import { AgentChip } from './Agents'
 import { CanaryPanel, canaryOf } from './CanaryPanel'
 import { StationEvidence } from './Evidence'
 
@@ -47,6 +49,9 @@ export function Inspector({ run, station, onOpen }: { run: RunState | null; stat
         <button type="button" className="btn small ghost" onClick={() => onOpen(run.runId)}>Open run</button>
       </div>
       <h2 className="insp-title">{pair ? 'Oracle vs diff check' : info.label}</h2>
+      <div className="step-agents insp-agents" aria-label="Who works here">
+        {(pair ? ['oracle', 'diff_inspection'] : [station]).flatMap((s) => agentsFor(run, s)).map((a) => <AgentChip key={a.id} agent={a} />)}
+      </div>
       {reason ? <p className={`reason ${tone}`}>{reason}</p> : <p className="reason note">{info.question}</p>}
       {pair ? (
         <div className="pair">

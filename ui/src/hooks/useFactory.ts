@@ -33,6 +33,7 @@ export function useFactory(source: FactorySource) {
   const [line, setLine] = useState<LineState>({ paused: false })
   const [audit, setAudit] = useState<AuditResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [errorStatus, setErrorStatus] = useState<number | null>(null)
   const [prod, setProd] = useState<ProdStatus | null>(null)
   const [prodError, setProdError] = useState<string | null>(null)
   const auditTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -52,8 +53,8 @@ export function useFactory(source: FactorySource) {
     let timer: ReturnType<typeof setTimeout>
     const load = () =>
       Promise.all([source.meta(), source.bugs()]).then(
-        ([m, b]) => { if (alive) { setMeta(m); setBugs(b); setError(null) } },
-        (err: Error) => { if (alive) { setError(err.message); timer = setTimeout(load, 3000) } },
+        ([m, b]) => { if (alive) { setMeta(m); setBugs(b); setError(null); setErrorStatus(null) } },
+        (err: Error & { status?: number }) => { if (alive) { setError(err.message); setErrorStatus(err.status ?? null); timer = setTimeout(load, 3000) } },
       )
     load()
     return () => { alive = false; clearTimeout(timer) }
@@ -86,6 +87,11 @@ export function useFactory(source: FactorySource) {
   }, [source, refreshAudit, refreshProd])
 
   const prodStart = useCallback(async () => { await source.prodStart(); refreshProd() }, [source, refreshProd])
+  const prodReset = useCallback(async (by: string) => {
+    const r = await source.prodReset(by)
+    refreshProd()
+    return r
+  }, [source, refreshProd])
   const prodRollback = useCallback(async (by: string) => {
     const r = await source.prodRollback(by)
     refreshProd()
@@ -100,7 +106,7 @@ export function useFactory(source: FactorySource) {
     return m
   }, [events])
 
-  return { state, events, eventsByRun, stream, meta, bugs, line, audit, error, pause, resume, refreshAudit, prod, prodError, prodStart, prodRollback }
+  return { state, events, eventsByRun, stream, meta, bugs, line, audit, error, errorStatus, pause, resume, refreshAudit, prod, prodError, prodStart, prodRollback, prodReset }
 }
 
 export function useNow(active: boolean, ms = 200): number {
