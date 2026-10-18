@@ -15,6 +15,17 @@ const source = pickSource()
 const DEFAULT_STATIONS = ['scope', 'baseline', 'reproduce', 'fix', 'oracle', 'diff_inspection', 'review', 'deploy']
 const MAX_LANES = 12
 
+/**
+ * "Run all" starts runs in parallel threads, so their run_started events arrive in random order.
+ * Run ids start with the second they were created (20261018T113429Z-bug1-…): group by that second,
+ * then order by bug number, so a batch always reads bug1, bug2, bug3…
+ */
+function byBatchThenBug(a: RunState, b: RunState): number {
+  const sa = a.runId.slice(0, 16), sb = b.runId.slice(0, 16)
+  if (sa !== sb) return a.firstSeq - b.firstSeq
+  return a.bug.id.localeCompare(b.bug.id, undefined, { numeric: true }) || a.firstSeq - b.firstSeq
+}
+
 /** With nothing selected, follow the action: a running station, else where the latest run stopped. */
 function autoSelect(lanes: RunState[]): Selection | null {
   for (let i = lanes.length - 1; i >= 0; i--) {
@@ -41,7 +52,7 @@ export default function App() {
 
   const stations = f.meta?.stations ?? DEFAULT_STATIONS
   const lanes = useMemo(
-    () => f.state.order.map((id) => f.state.runs[id]).filter((r) => r.firstSeq > clearedAt).slice(-MAX_LANES),
+    () => f.state.order.map((id) => f.state.runs[id]).filter((r) => r.firstSeq > clearedAt).slice(-MAX_LANES).sort(byBatchThenBug),
     [f.state, clearedAt],
   )
   const anyRunning = lanes.some((r) => r.status === 'running')
