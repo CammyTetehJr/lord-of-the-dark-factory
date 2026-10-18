@@ -57,6 +57,16 @@ Rogue modes: `delete_test`, `touch_auth`, `add_dependency`, `leak_secret`, `phon
 
 `deploy/` (git-ignored) holds a local production: `mainline` is a git repo of what production runs (one commit per promoted fix), and each running instance is the target service under uvicorn with its own SQLite database seeded with 50,000 invoices. A traffic generator sends a realistic request mix at a steady 200 requests/s over keep-alive connections and splits it between stable and canary. Real systems would split user traffic at a load balancer; the gate logic is the same.
 
+## GitHub intake: the factory picks up its own work
+
+```bash
+FACTORY_INTAKE_REPO=CammyTetehJr/dark-factory-target scripts/serve-public.sh
+```
+
+Every open issue on the target repo labelled **`autofix`** goes through the full live line (Nemotron in every role, canary deploy) with nobody starting it. The server polls every 20 s (`FACTORY_INTAKE_INTERVAL_S`). Only collaborators can add labels, so strangers can open issues but cannot put them on the line.
+
+The factory reports back on the issue: a "picked up" comment with the run id, then the result with a per-station table. Shipped or already fixed: labelled `factory: shipped` / `factory: already fixed` and **closed**, naming the production commit. Escalated: labelled **`needs-human`** and left open. Issues are processed once (`runs/intake.json`); to retry, remove the factory label. Status: `GET /api/intake`.
+
 ## Public mode (judges)
 
 ```bash
@@ -82,6 +92,7 @@ scripts/serve-public.sh        # builds the UI, starts production, serves UI + A
 | `eval/` | Answer key: bug reports, hidden tests, reference fixes. The factory never reads it during a run (except the `reference` dev fixer). |
 | `factory/fixers/nemotron.py` | The real fixer: Nemotron search/replace edits with test feedback, up to 3 attempts |
 | `factory/server.py` | HTTP API and live event stream for the UI; access code, run queue, serves `ui/dist` |
+| `factory/intake.py` | GitHub intake: `autofix` issues in, results and labels back out |
 | `factory/sandbox.py` | Clean environment and macOS sandbox for every process running untrusted code |
 | `scripts/serve-public.sh` | One command to put the Control Room online for judges |
 | `docs/ui-handoff.md` | **Start here if you are building the UI** |

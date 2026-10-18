@@ -38,6 +38,7 @@ They run the real pipeline in about 2 seconds and cost nothing. Use `"deploy": "
 | GET | `/api/prod` | Production: `up`, `url`, `stable` instance, `mainline` (recent production commits), `history` (promoted, rolled_back, manual_rollback) |
 | POST | `/api/prod/start` | Start production if it is not running |
 | POST | `/api/prod/rollback` | Human kill switch: revert the last promoted fix. Body: `{"by": "name"}` |
+| GET | `/api/intake` | GitHub intake: `{enabled, repo, label, last_poll, last_error, issues: {"<number>": {run_id, status, url}}}`. Runs it starts have bug ids like `issue7` and `bug.source` = the issue URL |
 | POST | `/api/prod/reset` | Restart production from the original code (all seeded bugs back). Body: `{"by": "name"}` → `{ok, message, url, commit}` |
 
 Event fields and per-station evidence are documented in [events.md](events.md).

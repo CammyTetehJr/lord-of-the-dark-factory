@@ -9,6 +9,9 @@
 # If the domain is held by an ngrok Cloud Endpoint (what ngrok's onboarding creates), connect the
 # agent to the endpoint's internal URL instead and say which public URL to print:
 #   NGROK_URL=https://default.internal PUBLIC_URL=https://my-name.ngrok-free.dev scripts/serve-public.sh
+#
+# Let the factory pick up its own work from GitHub (issues labelled `autofix`):
+#   FACTORY_INTAKE_REPO=owner/target-repo scripts/serve-public.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -28,7 +31,10 @@ echo "› starting production"
 .venv/bin/factory prod start
 
 LOG_DIR="logs"; mkdir -p "$LOG_DIR"
+# lets the GitHub intake (FACTORY_INTAKE_REPO) link to the Control Room in its issue comments
+export FACTORY_PUBLIC_URL="${PUBLIC_URL:-${FACTORY_PUBLIC_URL:-}}"
 echo "› starting factory serve on :$PORT (laptop kept awake while it runs)"
+[ -n "${FACTORY_INTAKE_REPO:-}" ] && echo "› GitHub intake on: issues labelled 'autofix' on $FACTORY_INTAKE_REPO"
 caffeinate -dimsu .venv/bin/factory serve --port "$PORT" >"$LOG_DIR/serve.log" 2>&1 &
 SERVE_PID=$!
 
