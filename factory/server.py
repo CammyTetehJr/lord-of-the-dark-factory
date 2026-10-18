@@ -84,6 +84,40 @@ class AccessCode:
 
 app.add_middleware(AccessCode)
 
+
+@app.on_event("startup")
+def _recover_interrupted_runs() -> None:
+    from factory.recovery import recover_interrupted
+    for run_id in recover_interrupted(config):
+        print(f"recovered interrupted run {run_id}: escalated by default", flush=True)
+
+
+INTAKE_REPO = os.environ.get("FACTORY_INTAKE_REPO", "")
+_intake = None
+
+
+@app.on_event("startup")
+def _start_github_intake() -> None:
+    """Issues labelled `autofix` on INTAKE_REPO go through the full live line on their own."""
+    global _intake
+    if not INTAKE_REPO:
+        return
+    from factory.intake import GitHubIntake
+
+    def submit(bug, run_id, on_done):
+        return submit_run(bug, get_fixer("nemotron"), get_reproducer("nemotron"), run_id,
+                          {"classifier": "nemotron", "reviewer": "nemotron", "deploy": "canary"}, on_done)
+
+    _intake = GitHubIntake(INTAKE_REPO, submit, config, public_url=os.environ.get("FACTORY_PUBLIC_URL") or None,
+                           interval_s=float(os.environ.get("FACTORY_INTAKE_INTERVAL_S", "20")))
+    _intake.start()
+    print(f"github intake: watching {INTAKE_REPO} for issues labelled autofix", flush=True)
+
+
+@app.get("/api/intake")
+def intake_status():
+    return _intake.status() if _intake else {"enabled": False}
+
 # Run queue: at most MAX_ACTIVE runs at once, a short queue behind them, and an hourly cap.
 MAX_ACTIVE = int(os.environ.get("FACTORY_MAX_ACTIVE_RUNS", "2"))
 MAX_QUEUED = int(os.environ.get("FACTORY_MAX_QUEUED_RUNS", "10"))
@@ -94,12 +128,22 @@ _in_flight = 0
 _started: deque[float] = deque()
 
 
-def _execute(run_args: tuple, run_kwargs: dict) -> None:
+class LineBusy(Exception):
+    pass
+
+
+def _execute(run_args: tuple, run_kwargs: dict, on_done=None) -> None:
     global _in_flight
     run_id = run_args[4]
+    run = None
     try:
-        run_pipeline(*run_args, **run_kwargs)
+        run = run_pipeline(*run_args, **run_kwargs)
     finally:
+        if on_done is not None:
+            try:
+                on_done(run_id, run)
+            except Exception as e:  # reporting back must never take the line down
+                print(f"on_done for {run_id} failed: {type(e).__name__}: {e}", flush=True)
         # keep evidence, artifacts and the signed log; drop the working copies
         for d in ("workspace", "fixer_workspace", "production_check"):
             shutil.rmtree(config.runs_dir / run_id / d, ignore_errors=True)
@@ -107,6 +151,7 @@ def _execute(run_args: tuple, run_kwargs: dict) -> None:
             _in_flight -= 1
 
 ARTIFACTS = {"fix.diff", "repro_test.py"}
+SSE_HEARTBEAT_S = float(os.environ.get("FACTORY_SSE_HEARTBEAT_S", "5"))
 
 
 def _read_jsonl(path: Path) -> list[dict]:
@@ -154,7 +199,7 @@ def bugs():
 
 @app.get("/api/runs")
 def runs(limit: int = 50):
-    dirs = sorted((d for d in config.runs_dir.glob("*") if d.is_dir()), reverse=True)[:limit]
+    dirs = sorted((d for d in config.runs_dir.glob("*") if (d / "events.jsonl").exists()), reverse=True)[:limit]
     return [_run_summary(d) for d in dirs]
 
 
@@ -199,6 +244,17 @@ def start_run(req: RunRequest):
         raise HTTPException(400, "classifier and reviewer must be 'none' or 'nemotron'")
     if req.deploy not in ("branch", "canary"):
         raise HTTPException(400, "deploy must be 'branch' or 'canary'")
+    try:
+        position = submit_run(bug, fixer, reproducer, run_id,
+                              {"classifier": req.classifier, "reviewer": req.reviewer, "deploy": req.deploy})
+    except LineBusy as e:
+        raise HTTPException(429, str(e))
+    return {"run_id": run_id, "queued_behind": position}
+
+
+def submit_run(bug: BugReport, fixer, reproducer, run_id: str, run_kwargs: dict, on_done=None) -> int:
+    """Queue a run under the shared limits (UI and GitHub intake alike). Returns how many runs
+    are ahead of it; raises LineBusy with a plain-language reason when the line is full."""
     global _in_flight
     with _queue_lock:
         now = time.time()
@@ -206,15 +262,14 @@ def start_run(req: RunRequest):
             _started.popleft()
         if len(_started) >= MAX_PER_HOUR:
             wait = int((3600 - (now - _started[0])) / 60) + 1 if _started else 60
-            raise HTTPException(429, f"Hourly limit of {MAX_PER_HOUR} runs reached. Try again in about {wait} min.")
+            raise LineBusy(f"Hourly limit of {MAX_PER_HOUR} runs reached. Try again in about {wait} min.")
         if _in_flight >= MAX_ACTIVE + MAX_QUEUED:
-            raise HTTPException(429, f"The line is busy ({_in_flight} runs in progress or waiting). Try again in a minute.")
+            raise LineBusy(f"The line is busy ({_in_flight} runs in progress or waiting). Try again in a minute.")
         position = max(0, _in_flight - MAX_ACTIVE + 1)
         _in_flight += 1
         _started.append(now)
-    _executor.submit(_execute, (bug, fixer, reproducer, config, run_id),
-                     {"classifier": req.classifier, "reviewer": req.reviewer, "deploy": req.deploy})
-    return {"run_id": run_id, "queued_behind": position}
+    _executor.submit(_execute, (bug, fixer, reproducer, config, run_id), run_kwargs, on_done)
+    return position
 
 
 @app.get("/api/escalations")
@@ -304,16 +359,28 @@ async def stream(since: int = 0):
     path = config.runs_dir / "events.jsonl"
 
     async def gen():
-        last = since
+        events = _read_jsonl(path)
+        # a client remembering a higher seq than the log has saw an older, archived log: start over
+        last = since if events and since <= events[-1]["seq"] else 0
+        # Proxies such as ngrok drop SSE comment lines, so a stream of ": keepalive" never even sends
+        # its headers. Heartbeats are real events named "ping": EventSource.onmessage ignores named
+        # events, so the UI is unaffected, but every proxy passes them on immediately.
+        yield f"event: ping\ndata: {json.dumps({'since': last})}\n\n"
+        beat = 0.0
         while True:
-            for e in _read_jsonl(path):
+            for e in events:
                 if e["seq"] > last:
                     last = e["seq"]
                     yield f"id: {e['seq']}\ndata: {json.dumps(e)}\n\n"
-            yield ": keepalive\n\n"
+            beat += 0.5
+            if beat >= SSE_HEARTBEAT_S:
+                beat = 0.0
+                yield "event: ping\ndata: {}\n\n"
             await asyncio.sleep(0.5)
+            events = _read_jsonl(path)
 
-    return StreamingResponse(gen(), media_type="text/event-stream")
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"})
 
 
 # The built UI, same origin as the API. Mounted last so every /api route wins.

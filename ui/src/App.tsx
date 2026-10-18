@@ -143,7 +143,7 @@ export default function App() {
     <div className="app">
       <header className="gbar">
         <div className="gbar-status">
-          <div className="brand">Dark Factory<small>{source.kind === 'mock' ? 'MOCK DATA' : 'CONTROL ROOM'}</small></div>
+          <a className="brand" href={source.kind === 'mock' ? '/?source=mock' : '/'} title="Back to the start (reloads the page)">Dark Factory<small>{source.kind === 'mock' ? 'MOCK DATA' : 'CONTROL ROOM'}</small></a>
           <span className={`pill ${line.paused ? 'stopped' : 'ok'}`} role="status">
             <i />{line.paused ? 'LINE STOPPED' : 'LINE RUNNING'}
           </span>
