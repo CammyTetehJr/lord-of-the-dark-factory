@@ -114,6 +114,7 @@ def _execute(run_args: tuple, run_kwargs: dict) -> None:
             _in_flight -= 1
 
 ARTIFACTS = {"fix.diff", "repro_test.py"}
+SSE_HEARTBEAT_S = float(os.environ.get("FACTORY_SSE_HEARTBEAT_S", "5"))
 
 
 def _read_jsonl(path: Path) -> list[dict]:
@@ -311,16 +312,28 @@ async def stream(since: int = 0):
     path = config.runs_dir / "events.jsonl"
 
     async def gen():
-        last = since
+        events = _read_jsonl(path)
+        # a client remembering a higher seq than the log has saw an older, archived log: start over
+        last = since if events and since <= events[-1]["seq"] else 0
+        # Proxies such as ngrok drop SSE comment lines, so a stream of ": keepalive" never even sends
+        # its headers. Heartbeats are real events named "ping": EventSource.onmessage ignores named
+        # events, so the UI is unaffected, but every proxy passes them on immediately.
+        yield f"event: ping\ndata: {json.dumps({'since': last})}\n\n"
+        beat = 0.0
         while True:
-            for e in _read_jsonl(path):
+            for e in events:
                 if e["seq"] > last:
                     last = e["seq"]
                     yield f"id: {e['seq']}\ndata: {json.dumps(e)}\n\n"
-            yield ": keepalive\n\n"
+            beat += 0.5
+            if beat >= SSE_HEARTBEAT_S:
+                beat = 0.0
+                yield "event: ping\ndata: {}\n\n"
             await asyncio.sleep(0.5)
+            events = _read_jsonl(path)
 
-    return StreamingResponse(gen(), media_type="text/event-stream")
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"})
 
 
 # The built UI, same origin as the API. Mounted last so every /api route wins.
