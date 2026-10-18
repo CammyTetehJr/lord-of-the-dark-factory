@@ -20,6 +20,7 @@ export function HoldButton({ onConfirm, children, className = '', holdMs = 1000,
   const setP = (p: number) => btn.current?.style.setProperty('--p', String(p))
   const cancel = () => { cancelAnimationFrame(raf.current); setP(0) }
   useEffect(() => cancel, [])
+  useEffect(() => { if (disabled) cancel() }, [disabled])
 
   const tick = () => {
     const p = Math.min(1, (performance.now() - start.current) / holdMs)
@@ -41,10 +42,11 @@ export function HoldButton({ onConfirm, children, className = '', holdMs = 1000,
       disabled={disabled}
       title={title}
       aria-label={label}
-      onPointerDown={begin}
+      onPointerDown={(e) => { if (e.button === 0 && e.isPrimary) begin() }}
       onPointerUp={cancel}
       onPointerLeave={cancel}
       onPointerCancel={cancel}
+      onBlur={cancel}
       onKeyDown={(e) => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); begin() } }}
       onKeyUp={cancel}
     >

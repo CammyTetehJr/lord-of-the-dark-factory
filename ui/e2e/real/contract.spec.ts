@@ -7,7 +7,7 @@ import { expect, test, type Page } from '@playwright/test'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { auditPill, cell, FACTORY_URL, finished, hold, holdAndon, inspect, inspector, lane, rollbackButton, runAll, runOne, setMode } from '../helpers.ts'
+import { auditPill, cell, FACTORY_URL, finished, hold, holdAndon, inspect, inspector, lane, resetButton, rollbackButton, runAll, runOne, setMode } from '../helpers.ts'
 
 const RUNS_DIR = process.env.E2E_RUNS_DIR ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../runs')
 const BUG1_TITLE = 'Invoice list shows the same invoice on two pages'
@@ -177,4 +177,29 @@ test('canary: slow_fix rolls back in Dev, the honest fix is promoted, the kill s
   await expect(page.locator('.popover.toast')).toHaveCount(0)
   await hold(page, rollbackButton(page))
   await expect(page.locator('.popover.toast')).toContainText('Rolled back', { timeout: 60_000 })
+})
+
+test('hold-to-reset restores production and lets the same bug ship again', async ({ page }) => {
+  test.setTimeout(240_000)
+  await api('/api/prod/reset', { method: 'POST', body: JSON.stringify({ by: 'e2e setup' }) })
+  const original = await api<{ stable: { commit: string } }>('/api/prod')
+  await devBoard(page)
+  await runOne(page, { bug: 'bug1', deploy: 'canary' })
+  await finished(lane(page, 'bug1'), 120_000)
+  await expect(lane(page, 'bug1')).toHaveAttribute('data-outcome', 'shipped')
+  await expect(rollbackButton(page)).toBeEnabled()
+  const promoted = await api<{ stable: { commit: string } }>('/api/prod')
+  await resetButton(page).click()
+  await page.waitForTimeout(1200)
+  expect((await api<{ stable: { commit: string } }>('/api/prod')).stable.commit).toBe(promoted.stable.commit)
+  await hold(page, resetButton(page))
+  await expect(page.locator('.prod .popover.toast')).toContainText('All seeded bugs are back', { timeout: 60_000 })
+  const reset = await api<{ stable: { commit: string }; history: { event: string; by?: string }[] }>('/api/prod')
+  expect(reset.stable.commit).toBe(original.stable.commit)
+  expect(reset.history).toContainEqual(expect.objectContaining({ event: 'reset', by: 'judge' }))
+  await expect(rollbackButton(page)).toBeDisabled()
+  await runOne(page, { bug: 'bug1', deploy: 'canary' })
+  await expect(page.locator('.lane[data-bug="bug1"]')).toHaveCount(2)
+  await finished(lane(page, 'bug1'), 120_000)
+  await expect(lane(page, 'bug1')).toHaveAttribute('data-outcome', 'shipped')
 })

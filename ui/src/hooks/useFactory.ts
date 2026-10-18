@@ -4,6 +4,8 @@ import { httpSource, onUnauthorized, type FactorySource, type StreamStatus } fro
 import type { AuditResult, Bug, FactoryEvent, LineState, Meta, ProdStatus } from '../api/types'
 import { apply, emptyState, type FactoryState } from '../state/reducer'
 
+export type ProdAction = 'start' | 'reset' | 'rollback'
+
 export function pickSource(): FactorySource {
   const q = new URLSearchParams(location.search).get('source')
   const env = import.meta.env.VITE_SOURCE as string | undefined
@@ -32,21 +34,28 @@ export function useFactory(source: FactorySource) {
   const [bugs, setBugs] = useState<Bug[]>([])
   const [line, setLine] = useState<LineState>({ paused: false })
   const [audit, setAudit] = useState<AuditResult | null>(null)
+  const [visitSeq, setVisitSeq] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [errorStatus, setErrorStatus] = useState<number | null>(null)
   const [prod, setProd] = useState<ProdStatus | null>(null)
   const [prodError, setProdError] = useState<string | null>(null)
+  const [prodAction, setProdAction] = useState<ProdAction | null>(null)
+  const prodBusy = useRef(false)
   const [locked, setLocked] = useState(false)
   useEffect(() => onUnauthorized(() => setLocked(true)), [])
   const auditTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const refreshProd = useCallback(() => {
-    source.prod().then((p) => { setProd(p); setProdError(null) }, (e: Error) => { setProd(null); setProdError(e.message) })
+    return source.prod().then((p) => { setProd(p); setProdError(null) }, (e: Error) => { setProd(null); setProdError(e.message) })
   }, [source])
 
   const refreshAudit = useCallback(() => {
     // If the server can't answer, drop back to "checking": never show green we can't currently back up.
-    source.verify().then(setAudit, () => setAudit(null))
+    source.verify().then((a) => {
+      setAudit(a)
+      // Freeze the first snapshot: replayed history stays available, but starts hidden this visit.
+      setVisitSeq((seq) => seq ?? a.events)
+    }, () => setAudit(null))
   }, [source])
 
   // meta + inbox once; retry until the server is up
@@ -88,17 +97,25 @@ export function useFactory(source: FactorySource) {
     return () => { clearInterval(a); clearInterval(b); clearInterval(c) }
   }, [source, refreshAudit, refreshProd])
 
-  const prodStart = useCallback(async () => { await source.prodStart(); refreshProd() }, [source, refreshProd])
-  const prodReset = useCallback(async (by: string) => {
-    const r = await source.prodReset(by)
-    refreshProd()
-    return r
+  const changeProduction = useCallback(async (action: ProdAction, by = 'judge') => {
+    if (prodBusy.current) throw new Error('A production change is already running. Please wait.')
+    prodBusy.current = true
+    setProdAction(action)
+    try {
+      if (action === 'start') {
+        await source.prodStart()
+        return { ok: true, message: 'Production started.' }
+      }
+      return await (action === 'reset' ? source.prodReset(by) : source.prodRollback(by))
+    } finally {
+      await refreshProd()
+      prodBusy.current = false
+      setProdAction(null)
+    }
   }, [source, refreshProd])
-  const prodRollback = useCallback(async (by: string) => {
-    const r = await source.prodRollback(by)
-    refreshProd()
-    return r
-  }, [source, refreshProd])
+  const prodStart = useCallback(async () => { await changeProduction('start') }, [changeProduction])
+  const prodReset = useCallback((by: string) => changeProduction('reset', by), [changeProduction])
+  const prodRollback = useCallback((by: string) => changeProduction('rollback', by), [changeProduction])
   const pause = useCallback(async (by: string, reason: string) => setLine(await source.pause(by, reason)), [source])
   const resume = useCallback(async (by: string, reason: string) => setLine(await source.resume(by, reason)), [source])
 
@@ -108,7 +125,7 @@ export function useFactory(source: FactorySource) {
     return m
   }, [events])
 
-  return { state, events, eventsByRun, stream, meta, bugs, line, audit, error, errorStatus, locked, pause, resume, refreshAudit, prod, prodError, prodStart, prodRollback, prodReset }
+  return { state, events, eventsByRun, stream, meta, bugs, line, audit, visitSeq, error, errorStatus, locked, pause, resume, refreshAudit, prod, prodError, prodAction, prodStart, prodRollback, prodReset }
 }
 
 export function useNow(active: boolean, ms = 200): number {

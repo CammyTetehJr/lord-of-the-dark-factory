@@ -58,6 +58,7 @@ export async function hold(page: Page, l: Locator) {
 }
 
 export const rollbackButton = (page: Page) => page.getByRole('button', { name: /^Hold to roll back/ })
+export const resetButton = (page: Page) => page.getByRole('button', { name: /^Hold to reset production/ })
 
 /** The andon cord needs a one-second hold. */
 export async function holdAndon(page: Page) {
