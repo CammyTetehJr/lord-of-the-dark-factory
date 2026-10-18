@@ -20,6 +20,7 @@ SUSPICIOUS_CODE = {
     "shell / process execution": r"\b(subprocess|os\.system|os\.popen|pty\.spawn)\b",
     "network access": r"\b(import|from)\s+(requests|httpx|urllib|socket|http\.client|aiohttp)\b|urlopen\s*\(",
     "deserialization": r"\b(pickle|marshal)\.loads?\s*\(",
+    "concurrency change": r"\b(threading|multiprocessing)\b|\b(Lock|RLock|Semaphore|Condition)\s*\(",
 }
 
 

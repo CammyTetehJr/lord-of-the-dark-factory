@@ -6,6 +6,7 @@ A candidate test qualifies only if, on the unmodified code, it:
   - fails for a plausible reason: no collection/fixture errors, no ImportError/SyntaxError/NameError
     (those mean the test is broken, not that it found the bug).
 """
+import re
 from typing import Protocol
 
 from factory.models import BugReport, Verdict
@@ -13,6 +14,19 @@ from factory.policy import Policy
 from factory.workspace import TestResult, Workspace
 
 BROKEN_TEST_ERRORS = {"ImportError", "ModuleNotFoundError", "SyntaxError", "IndentationError", "NameError"}
+
+# A test using any of these can pass or fail by chance, so its red runs are not evidence.
+NONDETERMINISTIC_CONSTRUCTS = {
+    "threads": r"\b(import threading|from threading|ThreadPoolExecutor|threading\.Thread)\b",
+    "processes": r"\b(multiprocessing|ProcessPoolExecutor)\b",
+    "async concurrency": r"\basyncio\.(gather|create_task|wait)\b",
+    "sleeps / timing": r"\btime\.sleep\s*\(|\bimport time\b",
+    "randomness": r"\bimport random\b|\brandom\.\w+\(",
+}
+
+
+def _static_nondeterminism(code: str) -> list[str]:
+    return [kind for kind, pat in NONDETERMINISTIC_CONSTRUCTS.items() if re.search(pat, code)]
 
 
 class Reproducer(Protocol):
@@ -54,6 +68,10 @@ def reproduce(bug: BugReport, ws: Workspace, reproducer: Reproducer, policy: Pol
         if not code:
             attempts.append({"candidate": n, "qualified": False, "runs": [],
                              "reason": cand.meta.get("error", "no test produced"), "generator": cand.meta})
+            continue
+        if kinds := _static_nondeterminism(code):
+            attempts.append({"candidate": n, "qualified": False, "runs": [], "generator": cand.meta, "test_code": code,
+                             "reason": f"test relies on {', '.join(kinds)}, so it can only reproduce the bug by chance"})
             continue
         ws.write_file(path, code)
         results = [ws.run_tests(path, tag=f"repro-c{n}-r{i}") for i in range(policy.repro_reruns)]

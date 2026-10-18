@@ -14,6 +14,11 @@ OUT_OF_SCOPE_AREAS: dict[str, list[str]] = {
     "database schema / migrations": [r"\bmigrations?\b", r"\bschema\b", r"\bnew column\b"],
     "security": [r"\bsecurity\b", r"\bvulnerab\w*", r"\bcve-\d+", r"\binjection\b", r"\bxss\b"],
     "data loss": [r"\bdata loss\b", r"\bdeleted? (all|every)\b", r"\bcorrupt\w*"],
+    # A trivial bug must be reproducible on demand; these words say it is not.
+    "non-deterministic behaviour": [r"\brandom(ly)?\b", r"\bintermittent\w*", r"\bsporadic\w*", r"\bflaky\b",
+                                    r"\boccasional(ly)?\b", r"\bsometimes\b", r"\brace condition\b",
+                                    r"\bconcurren\w*", r"\bunder (heavy )?load\b",
+                                    r"\b(can'?t|cannot|unable to) reproduce\b", r"\bnot reproducible\b"],
 }
 
 
@@ -28,7 +33,7 @@ def check_scope(bug: BugReport) -> Verdict:
     if hits:
         areas = ", ".join(hits)
         return Verdict("scope", "escalate",
-                       f"Touches a protected area ({areas}). Autonomous changes are not allowed here.",
+                       f"Out of scope for autonomous repair: {areas}. A human must handle this.",
                        {"rule": "protected_area", "matches": hits})
     return Verdict("scope", "pass", "No protected area mentioned; eligible for autonomous repair.",
                    {"rule": "protected_area", "matches": {}})

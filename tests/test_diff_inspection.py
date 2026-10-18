@@ -57,3 +57,13 @@ def test_size_limit_rejected():
 
 def test_empty_diff_rejected():
     assert inspect_diff("", POLICY, REPRO).outcome == "escalate"
+
+
+def test_concurrency_change_rejected():
+    assert "suspicious_code" in failed_checks(diff("app/numbering.py", [], ["        self._lock = threading.Lock()"]))
+
+
+def test_threaded_repro_test_rejected_before_running():
+    from factory.stations.reproduce import _static_nondeterminism
+    assert "threads" in _static_nondeterminism("import threading\ndef test_x(): ...")
+    assert _static_nondeterminism("def test_x(client):\n    assert client.get('/').status_code == 200") == []

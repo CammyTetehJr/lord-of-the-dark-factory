@@ -23,6 +23,8 @@ def run_fixer(bug: BugReport, ws: Workspace, repro_path: str, repro_code: str, f
                        {"fixer": fixer.name, "traceback": traceback.format_exc()[-2000:]}), None
     elapsed = round(time.monotonic() - started, 2)
     if not diff or not diff.strip():
-        return Verdict("fix", "escalate", "Fixer returned no change.", {"fixer": fixer.name, "seconds": elapsed}), None
+        return Verdict("fix", "escalate", "Fixer could not produce a change that passes the failing test.",
+                       {"fixer": fixer.name, "seconds": elapsed, "fixer_meta": getattr(fixer, "last_meta", None)}), None
     return Verdict("fix", "pass", "Fixer returned a diff (not yet trusted).",
-                   {"fixer": fixer.name, "seconds": elapsed, "diff": diff}), diff
+                   {"fixer": fixer.name, "seconds": elapsed, "diff": diff,
+                    "fixer_meta": getattr(fixer, "last_meta", None)}), diff

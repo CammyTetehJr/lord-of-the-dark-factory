@@ -29,3 +29,15 @@ def test_event_chain_detects_tampering(tmp_path):
     log.global_path.write_text("\n".join(lines) + "\n")
     ok, msg = verify_chain(log.global_path)
     assert not ok and "line 2" in msg
+
+
+def test_scope_escalates_intermittent_bug():
+    v = check_scope(bug("A few requests fail randomly during busy periods; we can't reproduce it reliably."))
+    assert v.outcome == "escalate" and "non-deterministic" in v.reason
+
+
+def test_all_trivial_seeded_reports_stay_in_scope():
+    from factory.config import Config
+    for i in range(1, 6):
+        report = BugReport.from_markdown(next(Config().inbox_dir.glob(f"bug{i}_*.md")))
+        assert check_scope(report).outcome == "pass", report.id
