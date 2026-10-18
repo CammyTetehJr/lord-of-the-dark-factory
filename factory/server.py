@@ -1,19 +1,32 @@
 """HTTP API for the UI. Read-only views over runs/, plus endpoints to start runs and pause the line.
 
     factory serve            # http://127.0.0.1:8100, docs at /docs
+
+Public mode (judges): set FACTORY_ACCESS_CODE. Every request then needs the code, once as
+`?code=...` (which sets a cookie) and via that cookie afterwards. If ui/dist exists it is served
+from the same origin, so one link opens everything.
 """
 import asyncio
+import hmac
 import json
+import os
+import shutil
 import threading
+import time
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
+from http.cookies import SimpleCookie
 from pathlib import Path
+from urllib.parse import parse_qs
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from factory import line
-from factory.config import Config
+from factory import line, sandbox
+from factory.config import ROOT, Config
 from factory.events import verify_chain
 from factory.fixers import get_fixer
 from factory.models import BugReport
@@ -23,6 +36,75 @@ from factory.reproducers import get_reproducer
 config = Config()
 app = FastAPI(title="Lord of the Dark Factory")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+ACCESS_CODE = os.environ.get("FACTORY_ACCESS_CODE", "")
+COOKIE = "df_access"
+UI_DIST = ROOT / "ui" / "dist"
+
+DENIED_PAGE = b"""<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>Dark Factory</title><body style="background:#0d0f12;color:#d8dde3;font:16px/1.5 ui-monospace,Menlo,monospace;
+display:grid;place-items:center;min-height:100vh;margin:0;padding:16px"><div style="max-width:28rem">
+<h1 style="font-size:20px;letter-spacing:.08em">DARK FACTORY</h1>
+<p>This link needs an access code. Open the full link you were given, including <code>?code=...</code></p></div>"""
+
+
+class AccessCode:
+    """Pure ASGI middleware (safe with the long-lived event stream)."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not ACCESS_CODE:
+            return await self.app(scope, receive, send)
+        headers = dict(scope.get("headers") or [])
+        cookie = SimpleCookie(headers.get(b"cookie", b"").decode())
+        has_cookie = COOKIE in cookie and hmac.compare_digest(cookie[COOKIE].value, ACCESS_CODE)
+        code = parse_qs(scope.get("query_string", b"").decode()).get("code", [""])[0]
+        has_code = bool(code) and hmac.compare_digest(code, ACCESS_CODE)
+        path = scope["path"]
+
+        if has_code and not path.startswith("/api"):
+            # set the cookie and drop the code from the address bar
+            secure = "; Secure" if headers.get(b"x-forwarded-proto") == b"https" else ""
+            await send({"type": "http.response.start", "status": 303, "headers": [
+                (b"location", path.encode() or b"/"),
+                (b"set-cookie", f"{COOKIE}={ACCESS_CODE}; Path=/; Max-Age=86400; HttpOnly; SameSite=Lax{secure}".encode()),
+            ]})
+            return await send({"type": "http.response.body", "body": b""})
+        if has_cookie or has_code:
+            return await self.app(scope, receive, send)
+        if path.startswith("/api") or path in ("/docs", "/openapi.json"):
+            body, ctype = b'{"detail": "access code required"}', b"application/json"
+        else:
+            body, ctype = DENIED_PAGE, b"text/html; charset=utf-8"
+        await send({"type": "http.response.start", "status": 401, "headers": [(b"content-type", ctype)]})
+        await send({"type": "http.response.body", "body": body})
+
+
+app.add_middleware(AccessCode)
+
+# Run queue: at most MAX_ACTIVE runs at once, a short queue behind them, and an hourly cap.
+MAX_ACTIVE = int(os.environ.get("FACTORY_MAX_ACTIVE_RUNS", "2"))
+MAX_QUEUED = int(os.environ.get("FACTORY_MAX_QUEUED_RUNS", "10"))
+MAX_PER_HOUR = int(os.environ.get("FACTORY_MAX_RUNS_PER_HOUR", "80"))
+_executor = ThreadPoolExecutor(MAX_ACTIVE, thread_name_prefix="run")
+_queue_lock = threading.Lock()
+_in_flight = 0
+_started: deque[float] = deque()
+
+
+def _execute(run_args: tuple, run_kwargs: dict) -> None:
+    global _in_flight
+    run_id = run_args[4]
+    try:
+        run_pipeline(*run_args, **run_kwargs)
+    finally:
+        # keep evidence, artifacts and the signed log; drop the working copies
+        for d in ("workspace", "fixer_workspace", "production_check"):
+            shutil.rmtree(config.runs_dir / run_id / d, ignore_errors=True)
+        with _queue_lock:
+            _in_flight -= 1
 
 ARTIFACTS = {"fix.diff", "repro_test.py"}
 
@@ -60,6 +142,8 @@ def meta():
     return {"stations": STATIONS, "fixers": ["nemotron", "reference", "rogue:delete_test", "rogue:touch_auth",
                                              "rogue:add_dependency", "rogue:leak_secret", "rogue:phone_home",
                                              "rogue:big_rewrite", "rogue:game_test", "rogue:slow_fix"],
+            "sandbox": sandbox.describe(),
+            "limits": {"max_active_runs": MAX_ACTIVE, "max_queued_runs": MAX_QUEUED, "max_runs_per_hour": MAX_PER_HOUR},
             "reproducers": ["nemotron", "dev"], "classifiers": ["nemotron", "none"], "reviewers": ["nemotron", "none"], "deploys": ["canary", "branch"], "target": {"repo": str(config.target_repo), "ref": config.target_ref}}
 
 
@@ -115,10 +199,22 @@ def start_run(req: RunRequest):
         raise HTTPException(400, "classifier and reviewer must be 'none' or 'nemotron'")
     if req.deploy not in ("branch", "canary"):
         raise HTTPException(400, "deploy must be 'branch' or 'canary'")
-    threading.Thread(target=run_pipeline, args=(bug, fixer, reproducer, config, run_id),
-                     kwargs={"classifier": req.classifier, "reviewer": req.reviewer, "deploy": req.deploy},
-                     daemon=True).start()
-    return {"run_id": run_id}
+    global _in_flight
+    with _queue_lock:
+        now = time.time()
+        while _started and now - _started[0] > 3600:
+            _started.popleft()
+        if len(_started) >= MAX_PER_HOUR:
+            wait = int((3600 - (now - _started[0])) / 60) + 1 if _started else 60
+            raise HTTPException(429, f"Hourly limit of {MAX_PER_HOUR} runs reached. Try again in about {wait} min.")
+        if _in_flight >= MAX_ACTIVE + MAX_QUEUED:
+            raise HTTPException(429, f"The line is busy ({_in_flight} runs in progress or waiting). Try again in a minute.")
+        position = max(0, _in_flight - MAX_ACTIVE + 1)
+        _in_flight += 1
+        _started.append(now)
+    _executor.submit(_execute, (bug, fixer, reproducer, config, run_id),
+                     {"classifier": req.classifier, "reviewer": req.reviewer, "deploy": req.deploy})
+    return {"run_id": run_id, "queued_behind": position}
 
 
 @app.get("/api/escalations")
@@ -177,6 +273,16 @@ def prod_start():
         return {"url": prod.ensure_stable().url}
 
 
+@app.post("/api/prod/reset")
+def prod_reset(req: PauseRequest):
+    from dataclasses import asdict
+
+    from factory.prod import Prod
+    inst = Prod(config).reset_production(req.by or "operator")
+    return {"ok": True, "message": "Production restarted from the original code; all seeded bugs are back.",
+            "url": inst.url, "commit": inst.commit, "stable": asdict(inst)}
+
+
 @app.post("/api/prod/rollback")
 def prod_rollback(req: PauseRequest):
     from factory.prod import Prod
@@ -208,3 +314,8 @@ async def stream(since: int = 0):
             await asyncio.sleep(0.5)
 
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+# The built UI, same origin as the API. Mounted last so every /api route wins.
+if UI_DIST.is_dir():
+    app.mount("/", StaticFiles(directory=UI_DIST, html=True), name="ui")
