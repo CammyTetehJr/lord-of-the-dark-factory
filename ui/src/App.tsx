@@ -10,6 +10,7 @@ import { ProdControl } from './components/ProdControl'
 import { EventStream, Queue } from './components/Rail'
 import { RunDrawer } from './components/RunDrawer'
 import { brokenSeq, pickSource, useFactory, useNow, useStored } from './hooks/useFactory'
+import { auditLabel } from './lib/audit'
 import { escalatedRuns, type RunState } from './state/reducer'
 
 const source = pickSource()
@@ -111,8 +112,8 @@ export default function App() {
         <span className={`pill ${line.paused ? 'stopped' : 'ok'}`} role="status">
           <i />{line.paused ? 'LINE STOPPED' : 'LINE RUNNING'}
         </span>
-        <span className={`pill audit-pill ${f.audit ? (f.audit.ok ? 'ok' : 'bad') : ''}`} title={f.audit?.message ?? 'Checking the audit chain'} role="status">
-          <i />{f.audit ? `${f.audit.ok ? '✓' : '✗'} ${f.audit.message}` : 'checking chain…'}
+        <span className={`pill audit-pill ${f.audit ? (f.audit.ok ? 'ok' : 'bad') : ''}`} title={auditLabel(f.audit).title} role="status">
+          <i />{auditLabel(f.audit).text}{auditLabel(f.audit).key && <span className="audit-key"> by {auditLabel(f.audit).key}</span>}
         </span>
         {f.stream !== 'open' && <span className="pill warn"><i />{f.stream === 'connecting' ? 'connecting…' : 'reconnecting…'}</span>}
         <span className="spacer" />

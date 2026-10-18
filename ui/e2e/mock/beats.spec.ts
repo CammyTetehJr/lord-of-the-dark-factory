@@ -129,12 +129,12 @@ test('audit pill turns red when the chain breaks and green when restored', async
   await setMode(page, 'Dev')
   await runOne(page, { bug: 'bug3' })
   await finished(lane(page, 'bug3'))
-  await expect(auditPill(page)).toContainText('chain intact')
+  await expect(auditPill(page)).toContainText('Chain intact')
   await page.evaluate(() => (globalThis as unknown as { __factoryMock: { tamper(): void } }).__factoryMock.tamper())
-  await expect(auditPill(page)).toContainText(/line \d+: content was modified/, { timeout: 10_000 })
+  await expect(auditPill(page)).toContainText(/Broken at line \d+: content modified/, { timeout: 10_000 })
   await expect(page.locator('.ticker li.broken')).toHaveCount(1)
   await page.evaluate(() => (globalThis as unknown as { __factoryMock: { restore(): void } }).__factoryMock.restore())
-  await expect(auditPill(page)).toContainText('chain intact', { timeout: 10_000 })
+  await expect(auditPill(page)).toContainText('Chain intact', { timeout: 10_000 })
 })
 
 test('run drawer names the agent, model and power at every step', async ({ page }) => {

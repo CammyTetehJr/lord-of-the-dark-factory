@@ -61,7 +61,12 @@ code, pre, .mono { font-family: var(--mono); }
 .pill.stopped { color: var(--hazard); border-color: var(--hazard); }
 .pill.stopped i { background: var(--hazard); animation: blink 1s steps(2) infinite; }
 .pill.warn { color: var(--sodium); border-color: color-mix(in srgb, var(--sodium) 45%, transparent); }
-.audit-pill { max-width: min(420px, 100%); overflow: hidden; text-overflow: ellipsis; cursor: help; }
+.audit-pill { cursor: help; }
+/* the governance bar stays on one row down to 1280 px: below 1400 px drop the key id and the brand subtitle */
+@media (max-width: 1399px) {
+  .audit-key, .brand small { display: none; }
+  .gbar { gap: 8px 10px; }
+}
 .hazard-sweep { position: absolute; left: 0; right: 0; bottom: -1px; height: 4px; background: repeating-linear-gradient(-45deg, var(--hazard) 0 8px, #111 8px 16px); transform-origin: left; }
 
 .btn { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--rule); background: var(--panel); font-weight: 600; font-size: 13px; cursor: pointer; white-space: nowrap; }
