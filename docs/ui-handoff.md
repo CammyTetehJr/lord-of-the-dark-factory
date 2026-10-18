@@ -13,7 +13,9 @@ python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
 .venv/bin/factory serve           # http://127.0.0.1:8100  (interactive docs at /docs)
 ```
 
-**Developing without a key:** start runs with `"fixer": "reference", "reproducer": "dev"`. They run the real pipeline in about 2 seconds and cost nothing. Use `"nemotron"` for both in the real demo (about 20 to 40 seconds per bug).
+**Developing without a key:** start runs with
+`{"bug_id": "bug1", "fixer": "reference", "reproducer": "dev", "classifier": "none", "reviewer": "none"}`.
+They run the real pipeline in about 2 seconds and cost nothing. In the real demo leave those four fields out: they default to Nemotron (about 30 to 60 seconds per bug).
 
 ## API
 
@@ -21,7 +23,7 @@ python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
 |---|---|---|
 | GET | `/api/meta` | Station order (draw the line from this), available fixers and reproducers |
 | GET | `/api/bugs` | Bug inbox: `id`, `title`, `body` |
-| POST | `/api/runs` | Start a run: `{"bug_id": "bug1", "fixer": "nemotron", "reproducer": "nemotron"}` → `{"run_id"}` |
+| POST | `/api/runs` | Start a run: `{"bug_id": "bug1"}` (all roles default to Nemotron) → `{"run_id"}` |
 | GET | `/api/runs` | Recent runs: `status` (`running`/`shipped`/`escalated`), per-station outcome, escalation reason |
 | GET | `/api/runs/{id}` | One run: `summary`, all `events`, final `result` with full evidence |
 | GET | `/api/runs/{id}/artifacts/fix.diff` | The diff (plain text) |
@@ -30,14 +32,16 @@ python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
 | GET | `/api/escalations` | Human queue, newest first |
 | GET | `/api/line` | `{"paused": bool, "by", "reason", "ts"}` |
 | POST | `/api/line/pause` / `/api/line/resume` | Andon cord. Body: `{"by": "name", "reason": "..."}` |
-| GET | `/api/audit/verify` | `{"ok", "message", "events"}`: hash chain intact or the line where it broke |
+| GET | `/api/audit/verify` | `{"ok", "message", "events"}`: chain and signatures intact, or the line where it broke |
+| POST | `/api/runs/{id}/replay` | Re-run every deterministic gate from the signed record (5 to 10 s). Returns `integrity` and `stations[]` with `recorded`, `replayed`, `match` |
+| GET | `/api/audit/pubkey` | The public key anyone can verify the log with |
 
 Event fields and per-station evidence are documented in [events.md](events.md).
 
 ## Screens, in demo order
 
-1. **The line.** Seven stations left to right (`/api/meta`). Each bug moves through them live: running, pass, escalate. Clicking "Run all" posts one run per bug. This is the hero view; it must read from across a room.
-2. **Run detail.** The reason line for each station, the reproducing test, the diff, the `diff_inspection` checks as a checklist, and the Nemotron calls (model, seconds, tokens) from `reproduce.evidence.attempts[].generator` and `fix.evidence.fixer_meta.attempts[]`.
+1. **The line.** Eight stations left to right (`/api/meta`). Each bug moves through them live: running, pass, escalate. Clicking "Run all" posts one run per bug. This is the hero view; it must read from across a room.
+2. **Run detail.** The reason line for each station, the reproducing test, the diff, the `diff_inspection` checks as a checklist, the reviewer's verdict and concerns, and every Nemotron call (model, seconds, tokens): `scope.evidence.classifier`, `reproduce.evidence.attempts[].generator`, `fix.evidence.fixer_meta.attempts[]`, `review.evidence`. A **Replay** button that calls the replay endpoint and shows recorded vs replayed per station.
 3. **Escalation queue.** What went to a human, and why, in one sentence each.
 4. **Governance bar.** Always visible: the andon cord (pause/resume) and the audit status ("chain intact, 514 events" in green, or the broken line in red).
 
@@ -49,5 +53,7 @@ Event fields and per-station evidence are documented in [events.md](events.md).
 | Bug 6 (race condition) | Stops at scope: "non-deterministic behaviour". |
 | Bug 7 (expired API keys) | Stops at scope: "authentication / authorization". |
 | Bug 1 with `rogue:delete_test` | **Oracle passes, diff inspection rejects.** Show both side by side: the tests alone would have shipped it. |
+| Bug 3 with `rogue:game_test` | Oracle and diff inspection both pass. **The Nemotron reviewer vetoes**: "hardcodes the exact test input". |
 | Pause the line, start a run | It stops before the first station and lands in the queue. |
-| Audit verify | Green. (Edit a line in `runs/events.jsonl` live to show it turn red, then restore it.) |
+| Replay a shipped run | Every deterministic gate re-runs and matches; model calls shown with their prompt hashes. |
+| Audit verify | Green: "all signed by key …". (Edit a line in `runs/events.jsonl` live to show it turn red, then restore it.) |

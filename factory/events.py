@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from factory import signing
+
 GENESIS = "0" * 64
 _lock = threading.Lock()
 
@@ -28,7 +30,7 @@ def _last_hash(path: Path) -> tuple[str, int]:
 
 
 def entry_hash(entry: dict) -> str:
-    body = {k: v for k, v in entry.items() if k != "hash"}
+    body = {k: v for k, v in entry.items() if k not in ("hash", "sig")}
     return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
@@ -49,8 +51,10 @@ class EventLog:
                 "type": type,
                 **data,
                 "prev_hash": prev,
+                "key_id": signing.key_id(),
             }
             entry["hash"] = entry_hash(entry)
+            entry["sig"] = signing.sign(entry["hash"])
             line = json.dumps(entry, sort_keys=True) + "\n"
             for path in (self.global_path, self.run_path):
                 with path.open("a") as f:
@@ -58,13 +62,26 @@ class EventLog:
         return entry
 
 
-def verify_chain(path: Path) -> tuple[bool, str]:
+def verify_entry(entry: dict, public) -> str | None:
+    """Problem with a single entry, or None if its hash and signature are valid."""
+    if entry_hash(entry) != entry.get("hash"):
+        return "content was modified (hash mismatch)"
+    if "sig" not in entry:
+        return "entry is not signed"
+    if not signing.verify(public, entry["hash"], entry["sig"]):
+        return "signature invalid (not written by this factory's key)"
+    return None
+
+
+def verify_chain(path: Path, public_key_path: Path | None = None) -> tuple[bool, str]:
+    public = signing.load_public(public_key_path)
     prev = GENESIS
+    n = 0
     for n, line in enumerate(path.read_text().splitlines(), 1):
         entry = json.loads(line)
         if entry["prev_hash"] != prev:
-            return False, f"line {n}: prev_hash does not match line {n - 1}"
-        if entry_hash(entry) != entry["hash"]:
-            return False, f"line {n}: content was modified (hash mismatch)"
+            return False, f"line {n}: prev_hash does not match line {n - 1} (entry removed, inserted or reordered)"
+        if problem := verify_entry(entry, public):
+            return False, f"line {n}: {problem}"
         prev = entry["hash"]
-    return True, "chain intact"
+    return True, f"chain intact, {n} events, all signed by key {signing.key_id(public)}"

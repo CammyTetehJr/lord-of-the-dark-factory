@@ -20,7 +20,9 @@ The factory writes every step of every run as it happens. The UI only needs to r
   "run_id": "20261018T102148Z-bug1-99437b",
   "type": "station_finished",
   "prev_hash": "…64 hex…",         // hash of the previous event
-  "hash": "…64 hex…"               // sha256 of this event (without "hash"); see `factory verify`
+  "hash": "…64 hex…",              // sha256 of this event (without "hash" and "sig")
+  "key_id": "145c70a072c31622",    // which factory key signed it
+  "sig": "…base64…"                // Ed25519 signature over "hash"; see `factory verify`
 }
 ```
 
@@ -38,18 +40,19 @@ The factory writes every step of every run as it happens. The UI only needs to r
 
 ## Stations
 
-`scope` → `baseline` → `reproduce` → `fix` → `oracle` → `diff_inspection` → `deploy`
+`scope` → `baseline` → `reproduce` → `fix` → `oracle` → `diff_inspection` → `review` → `deploy`
 
-The first `escalate` stops the line, except that `oracle` and `diff_inspection` always both run, so a rejected fix shows every reason. A `factory` station with `escalate` means the pipeline itself crashed.
+The first `escalate` stops the line, except that `oracle` and `diff_inspection` always both run, so a rejected fix shows every reason. `review` (the Nemotron Ultra veto) only runs if both passed. A `factory` station with `escalate` means the pipeline itself crashed.
 
 ## Evidence worth showing
 
 | Station | Useful evidence fields |
 |---|---|
-| `scope` | `matches`: protected areas and the words that triggered them |
+| `scope` | `rules.matches`: protected areas and the words that triggered them; `classifier`: Nemotron call (`model`, `seconds`, `answer.reason`) or `"disabled"` |
 | `baseline` | `tests.counts` |
 | `reproduce` | `attempts[]`: `runs` (e.g. `["red","green","green"]`), `reason`, `qualified`; `test_code` when found |
 | `fix` | `fixer`, `seconds`, `diff` |
 | `oracle` | `repro_test.runs` (expect all `green`), `suite.attempts[0].counts`, `suite.flaky` |
 | `diff_inspection` | `checks[]`: `{check, ok, detail}`, ideal as a checklist; `files`, `lines_changed` |
+| `review` | `answer.verdict`, `answer.concerns[]`, `answer.reason`, `model`, `seconds` (or `reviewer: "disabled"`) |
 | `deploy` | `branch`, `commit`, `canary` |

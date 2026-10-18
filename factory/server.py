@@ -142,6 +142,23 @@ def resume(req: PauseRequest):
     return line.set_paused(config.runs_dir, False, req.by, req.reason)
 
 
+@app.post("/api/runs/{run_id}/replay")
+def run_replay(run_id: str):
+    from factory.replay import replay
+    if "/" in run_id or ".." in run_id:
+        raise HTTPException(404, "run not found")
+    try:
+        return replay(run_id, config)
+    except FileNotFoundError:
+        raise HTTPException(404, "run not found")
+
+
+@app.get("/api/audit/pubkey", response_class=PlainTextResponse)
+def audit_pubkey():
+    from factory import signing
+    return signing.public_pem().decode()
+
+
 @app.get("/api/audit/verify")
 def audit_verify():
     path = config.runs_dir / "events.jsonl"

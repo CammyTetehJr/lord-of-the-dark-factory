@@ -59,6 +59,17 @@ def _judge(results: list[TestResult]) -> tuple[bool, str]:
     return True, f"fails deterministically on {len(results)}/{len(results)} runs"
 
 
+def judge_test(ws: Workspace, path: str, code: str, policy: Policy, tag: str = "c") -> tuple[bool, str, list[TestResult]]:
+    """Does this test qualify as a reproduction on the workspace's current (unfixed) code?"""
+    if kinds := _static_nondeterminism(code):
+        return False, f"test relies on {', '.join(kinds)}, so it can only reproduce the bug by chance", []
+    ws.write_file(path, code)
+    results = [ws.run_tests(path, tag=f"repro-{tag}-r{i}") for i in range(policy.repro_reruns)]
+    (ws.path / path).unlink()
+    ok, why = _judge(results)
+    return ok, why, results
+
+
 def reproduce(bug: BugReport, ws: Workspace, reproducer: Reproducer, policy: Policy) -> tuple[Verdict, str | None]:
     path = repro_test_path(bug)
     attempts = []
@@ -69,17 +80,11 @@ def reproduce(bug: BugReport, ws: Workspace, reproducer: Reproducer, policy: Pol
             attempts.append({"candidate": n, "qualified": False, "runs": [],
                              "reason": cand.meta.get("error", "no test produced"), "generator": cand.meta})
             continue
-        if kinds := _static_nondeterminism(code):
-            attempts.append({"candidate": n, "qualified": False, "runs": [], "generator": cand.meta, "test_code": code,
-                             "reason": f"test relies on {', '.join(kinds)}, so it can only reproduce the bug by chance"})
-            continue
-        ws.write_file(path, code)
-        results = [ws.run_tests(path, tag=f"repro-c{n}-r{i}") for i in range(policy.repro_reruns)]
-        (ws.path / path).unlink()
-        ok, why = _judge(results)
-        outcomes = ["red" if not r.passed else "green" for r in results]
-        attempts.append({"candidate": n, "qualified": ok, "reason": why, "runs": outcomes,
-                         "first_run": results[0].summary(), "generator": cand.meta, "test_code": code})
+        ok, why, results = judge_test(ws, path, code, policy, tag=f"c{n}")
+        attempts.append({"candidate": n, "qualified": ok, "reason": why,
+                         "runs": ["red" if not r.passed else "green" for r in results],
+                         "first_run": results[0].summary() if results else None,
+                         "generator": cand.meta, "test_code": code})
         if ok:
             return Verdict("reproduce", "pass", f"Reproducing test found: {why}.",
                            {"reproducer": reproducer.name, "test_path": path, "attempts": attempts,

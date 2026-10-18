@@ -77,9 +77,31 @@ def cmd_eval(args) -> None:
 
 
 def cmd_verify(args) -> None:
-    ok, msg = verify_chain(Path(args.log) if args.log else Config().runs_dir / "events.jsonl")
+    ok, msg = verify_chain(Path(args.log) if args.log else Config().runs_dir / "events.jsonl",
+                           Path(args.pubkey) if args.pubkey else None)
     print(("✓ " if ok else "✗ ") + msg)
     sys.exit(0 if ok else 1)
+
+
+def cmd_replay(args) -> None:
+    from factory.replay import replay
+    r = replay(args.run_id)
+    i = r["integrity"]
+    print(f"\nreplay {r['run_id']}  ({r['bug']}, commit {r['commit'][:10]}, recorded outcome: {r['outcome']})")
+    print(f"  integrity: {i['events']} events, {'all signatures valid' if not i['bad_events'] else 'BAD: ' + str(i['bad_events'])}; "
+          + ", ".join(f"{a['artifact']} {'matches' if a['ok'] else 'DOES NOT MATCH'} its signed hash" for a in i["artifacts"]))
+    for row in r["stations"]:
+        mark = {True: "✓", False: "✗", None: "·"}[row["match"]]
+        what = f"{row['recorded']} → {row['replayed']}" if row["kind"] == "deterministic" else f"{row['recorded']} ({row['kind']})"
+        print(f"  {mark} {row['station']:<16} {what:<22} {row['note'][:90]}")
+    print("  => REPLAY " + ("CONFIRMS THE RECORD" if r["ok"] else "DOES NOT MATCH THE RECORD"))
+    sys.exit(0 if r["ok"] else 1)
+
+
+def cmd_pubkey(args) -> None:
+    from factory import signing
+    print(signing.public_pem().decode(), end="")
+    print(f"key id: {signing.key_id()}")
 
 
 def cmd_setup(args) -> None:
@@ -119,10 +141,15 @@ def main() -> None:
         sp.add_argument("--live", action="store_true", help="shorthand: Nemotron for every role")
         sp.set_defaults(fn=fn)
 
-    sp = sub.add_parser("verify", help="verify the event log hash chain")
+    sp = sub.add_parser("verify", help="verify the event log hash chain and signatures")
     sp.add_argument("--log")
+    sp.add_argument("--pubkey", help="PEM public key to verify against (default: this factory's key)")
     sp.set_defaults(fn=cmd_verify)
     sub.add_parser("setup", help="create the target test environment").set_defaults(fn=cmd_setup)
+    sp = sub.add_parser("replay", help="re-verify a past run from its signed record")
+    sp.add_argument("run_id")
+    sp.set_defaults(fn=cmd_replay)
+    sub.add_parser("pubkey", help="print the audit public key").set_defaults(fn=cmd_pubkey)
     sp = sub.add_parser("serve", help="HTTP API for the UI")
     sp.add_argument("--host", default="127.0.0.1")
     sp.add_argument("--port", type=int, default=8100)

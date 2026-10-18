@@ -54,3 +54,15 @@ def test_model_roles_disabled_means_rules_only():
     from factory.stations.review import review
     assert check_scope(bug("The total on page 2 is off by one cent."), classifier="none").evidence["classifier"] == "disabled"
     assert review(bug("x" * 30), None, "", "", reviewer="none").outcome == "pass"
+
+
+def test_forged_entry_with_recomputed_hash_fails_signature(tmp_path):
+    from factory.events import entry_hash
+    log = EventLog(tmp_path, "r1")
+    log.emit("station_finished", station="oracle", outcome="escalate")
+    entry = json.loads(log.global_path.read_text())
+    entry["outcome"] = "pass"
+    entry["hash"] = entry_hash(entry)  # an attacker can recompute the hash, but not the signature
+    log.global_path.write_text(json.dumps(entry, sort_keys=True) + "\n")
+    ok, msg = verify_chain(log.global_path)
+    assert not ok and "signature" in msg
