@@ -8,8 +8,10 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "vitest run",
-    "dev:mock": "vite --open /?source=mock"
+    "test": "vitest run --dir src",
+    "dev:mock": "vite --open /?source=mock",
+    "test:e2e": "playwright test --project=real --workers=1",
+    "test:e2e:mock": "playwright test --project=mock"
   },
   "dependencies": {
     "motion": "^14.3.0",
@@ -17,6 +19,7 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
