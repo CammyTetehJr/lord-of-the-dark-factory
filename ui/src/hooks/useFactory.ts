@@ -36,7 +36,8 @@ export function useFactory(source: FactorySource) {
   const auditTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const refreshAudit = useCallback(() => {
-    source.verify().then(setAudit, () => {})
+    // If the server can't answer, drop back to "checking": never show green we can't currently back up.
+    source.verify().then(setAudit, () => setAudit(null))
   }, [source])
 
   // meta + inbox once; retry until the server is up
