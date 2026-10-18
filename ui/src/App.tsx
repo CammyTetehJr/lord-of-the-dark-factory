@@ -162,7 +162,7 @@ export default function App() {
               <div className="empty-board">
                 <b>The line is quiet</b>
                 <span>Press <b style={{ font: 'inherit', textTransform: 'none' }}>Run all</b> to send every bug in the inbox through the {stations.length} stations. Each bug gets a lane, and each station lights up as the bug reaches it.</span>
-                <span className="note">{mode === 'dev' ? 'Dev mode: reference fixer and dev reproducer, no model calls, about 2 s per bug.' : 'Live mode: Nemotron in every role, about 30 to 60 s per bug.'}</span>
+                <span className="note">{mode === 'dev' ? 'Dev mode: reference fixer and dev reproducer, no model calls, about 2 s per bug.' : 'Live mode: Nemotron in every role, about 30 to 60 s per bug.'}</span>
               </div>
             )}
           </div>

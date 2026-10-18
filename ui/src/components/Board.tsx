@@ -57,7 +57,8 @@ export function Board({ runs, stations, selected, onSelect, onOpen, now }: {
   onOpen: (runId: string) => void
   now: number
 }) {
-  const cols = `minmax(220px, 1.7fr) repeat(${stations.length}, minmax(74px, 1fr)) minmax(120px, 1fr)`
+  // The outcome is the most important cell on a lane: its column sizes to its content and is never squeezed.
+  const cols = `minmax(150px, 1.5fr) repeat(${stations.length}, minmax(50px, 1fr)) max-content`
   return (
     <div className="boardwrap">
       <div className="board" role="grid" aria-label="Runs by station" style={{ gridTemplateColumns: cols }}>

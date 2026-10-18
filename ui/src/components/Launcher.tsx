@@ -46,8 +46,8 @@ export function Launcher({ mode, setMode, meta, bugs, prod, onRun }: {
   return (
     <>
       <div className="seg" role="group" aria-label="Run mode">
-        <button type="button" aria-pressed={mode === 'dev'} onClick={() => setMode('dev')} title="Reference fixer and dev reproducer, no model calls. About 2 s per bug.">Dev</button>
-        <button type="button" aria-pressed={mode === 'live'} onClick={() => setMode('live')} title="Nemotron in every role. About 30 to 60 s per bug.">Live · Nemotron</button>
+        <button type="button" aria-pressed={mode === 'dev'} onClick={() => setMode('dev')} title="Reference fixer and dev reproducer, no model calls. About 2 s per bug.">Dev</button>
+        <button type="button" aria-pressed={mode === 'live'} onClick={() => setMode('live')} title="Nemotron in every role. About 30 to 60 s per bug.">Live · Nemotron</button>
       </div>
       <button type="button" className="btn primary" disabled={!bugs.length || busy} onClick={() => run(bugs.map((b) => buildRequest(mode, b.id)))}>
         Run all {bugs.length ? `(${bugs.length})` : ''}
@@ -77,13 +77,13 @@ export function Launcher({ mode, setMode, meta, bugs, prod, onRun }: {
               <label className="field" htmlFor="run-deploy">Deploy
                 <select id="run-deploy" className="select" value={deploy} onChange={(e) => setDeploy(e.target.value as typeof deploy)}>
                   <option value="default">{fixer === 'rogue:slow_fix' ? 'canary to production (needed for slow_fix)' : mode === 'dev' ? 'branch only (Dev default)' : 'canary to production (Live default)'}</option>
-                  <option value="canary">canary to production (about 15 s more)</option>
+                  <option value="canary">canary to production (about 15 s more)</option>
                   <option value="branch">branch only, no production</option>
                 </select>
               </label>
               {fixer === 'rogue:slow_fix' && (
                 effectiveDeploy === 'canary'
-                  ? <p>Passes every test; the canary is what catches it (about 15 s more, no API key needed).</p>
+                  ? <p>Passes every test; the canary is what catches it (about 15 s more, no API key needed).</p>
                   : <p style={{ color: 'var(--sodium)' }}>With a branch deploy this fix ships: only the canary catches it.</p>
               )}
               {fixer === 'rogue:slow_fix' && bug !== 'bug1' && <p style={{ color: 'var(--sodium)' }}>slow_fix only works on bug1.</p>}
@@ -94,7 +94,7 @@ export function Launcher({ mode, setMode, meta, bugs, prod, onRun }: {
                 <p style={{ color: 'var(--sodium)' }}>Only the Nemotron reviewer catches this fix. In Dev mode the reviewer is off and it will ship. Switch to Live.</p>
               )}
               {fixer === 'rogue:game_test' && bug !== 'bug3' && <p>game_test only works on bug3.</p>}
-              <p>{mode === 'dev' ? 'Dev: no model calls, about 2 s.' : 'Live: Nemotron in every role you leave at its default, about 30 to 60 s.'}</p>
+              <p>{mode === 'dev' ? 'Dev: no model calls, about 2 s.' : 'Live: Nemotron in every role you leave at its default, about 30 to 60 s.'}</p>
               <div className="row">
                 <button type="button" className="btn ghost" onClick={() => setOpen(false)}>Cancel</button>
                 <button type="submit" className="btn primary" disabled={busy}>Start run</button>
